@@ -1,0 +1,36 @@
+PSO-OPTIMIZED GRADIENT BOOSTING STACKING
+======================================================================
+
+Fusion strategy:
+  Decision-level (Late) Fusion
+  Equal-weight probability averaging
+
+Base models selected by PSO:
+  - EfficientNet
+  - ResNet
+  - VGG16
+
+Fusion weights:
+  EfficientNet: 0.333333
+  ResNet: 0.333333
+  VGG16: 0.333333
+
+Meta-learner:
+  GradientBoostingClassifier
+
+Gradient Boosting parameters:
+  n_estimators = 100
+  max_depth = 3
+  learning_rate = 0.1
+
+Test-set performance:
+  Accuracy:    0.980962
+  Precision:   0.984352
+  Recall:      0.978610
+  Specificity: 0.983463
+  F1-score:    0.981472
+  AUC-ROC:     0.998576
+
+Confusion matrix:
+[[1903   32]
+ [  44 2013]]

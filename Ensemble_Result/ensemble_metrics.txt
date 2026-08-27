@@ -1,0 +1,25 @@
+Ensemble Result
+
+Hard Voting:
+Accuracy   : 0.9699
+Precision  : 0.9676
+Recall     : 0.9742
+Specificity: 0.9654
+F1-Score   : 0.9709
+AUC-ROC    : 0.9698
+
+Soft Voting:
+Accuracy   : 0.9770
+Precision  : 0.9758
+Recall     : 0.9796
+Specificity: 0.9742
+F1-Score   : 0.9777
+AUC-ROC    : 0.9981
+
+Weighted Averaging:
+Accuracy   : 0.9780
+Precision  : 0.9763
+Recall     : 0.9810
+Specificity: 0.9747
+F1-Score   : 0.9787
+AUC-ROC    : 0.9982

@@ -1,0 +1,50 @@
+// Selected PSO
+{
+    "model_order": [
+        "EfficientNet",
+        "DenseNet",
+        "ResNet",
+        "VGG16",
+        "Xception"
+    ],
+    "selected_models": [
+        "EfficientNet",
+        "ResNet",
+        "VGG16"
+    ],
+    "selected_indices": [
+        0,
+        2,
+        3
+    ],
+    "dropped_models": [
+        "DenseNet",
+        "Xception"
+    ],
+    "fitness": 0.9899963968140925,
+    "validation_metrics": {
+        "accuracy": 0.9852093256455252,
+        "f1": 0.9856761349842195,
+        "auc": 0.999103729812533
+    },
+    "fitness_definition": "(Accuracy + F1 + AUC) / 3",
+    "pso_parameters": {
+        "swarm_size": 20,
+        "iterations": 30,
+        "restarts": 5,
+        "inertia_start": 0.9,
+        "inertia_end": 0.4,
+        "cognitive_coefficient": 2.0,
+        "social_coefficient": 2.0,
+        "random_seed": 42
+    },
+    "exhaustive_verification": {
+        "best_models": [
+            "EfficientNet",
+            "ResNet",
+            "VGG16"
+        ],
+        "best_fitness": 0.9899963968140925,
+        "pso_matches_exhaustive": true
+    }
+}

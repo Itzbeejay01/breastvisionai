@@ -1,0 +1,19 @@
+{
+    "fusion_strategy": "decision_level_late_fusion",
+    "fusion_method": "equal_weight_probability_average",
+    "selected_models": [
+        "EfficientNet",
+        "ResNet",
+        "VGG16"
+    ],
+    "selected_indices": [
+        0,
+        2,
+        3
+    ],
+    "fusion_weights": {
+        "EfficientNet": 0.3333333333333333,
+        "ResNet": 0.3333333333333333,
+        "VGG16": 0.3333333333333333
+    }
+}

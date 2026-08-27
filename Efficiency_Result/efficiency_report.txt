@@ -1,0 +1,16 @@
+DEPLOYMENT EFFICIENCY COMPARISON
+======================================================================
+
+Configuration 1: All 5 CNN models
+Models: EfficientNet, DenseNet, ResNet, VGG16, Xception
+Total inference time: 2539.193072 seconds
+Average inference time per image: 636.070409 ms
+
+Configuration 2: PSO-selected 3 CNN models
+Models: EfficientNet, ResNet, VGG16
+Total inference time: 1396.564612 seconds
+Average inference time per image: 349.840835 ms
+
+Efficiency improvement
+Inference time reduction: 44.9997%
+Memory reduction: Not available

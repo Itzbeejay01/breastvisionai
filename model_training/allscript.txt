@@ -1,0 +1,1257 @@
+pso cache
+"""
+PSO-Only script: Run AFTER all 5 model predictions are cached.
+Requires NO TensorFlow — pure numpy + sklearn.
+Reads from pso_cache/{ModelName}_val.npy and _test.npy.
+Uses Gradient Boosting as the sole meta-learner.
+"""
+import os, json, numpy as np, matplotlib, warnings
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, roc_curve
+
+warnings.filterwarnings('ignore')
+np.random.seed(42)
+
+cache_dir = 'pso_cache'
+output_dir = 'PSO_Result'
+os.makedirs(output_dir, exist_ok=True)
+
+model_order = ["EfficientNet", "DenseNet", "ResNet", "VGG16", "Xception"]
+N_MODELS = len(model_order)
+
+# =========================================================
+# LOAD CACHED PREDICTIONS
+# =========================================================
+print("Loading cached predictions...")
+val_list = [np.load(os.path.join(cache_dir, f"{m}_val.npy")) for m in model_order]
+test_list = [np.load(os.path.join(cache_dir, f"{m}_test.npy")) for m in model_order]
+y_val = np.load(os.path.join(cache_dir, "val_labels.npy"))
+y_test = np.load(os.path.join(cache_dir, "test_labels.npy"))
+
+val_probs = np.array(val_list)
+test_probs = np.array(test_list)
+print(f"  Val: {val_probs.shape}, Test: {test_probs.shape}")
+print(f"  y_val: {len(y_val)} (b={sum(y_val==0)}, m={sum(y_val==1)})")
+print(f"  y_test: {len(y_test)} (b={sum(y_test==0)}, m={sum(y_test==1)})")
+
+# =========================================================
+# PSO WEIGHT OPTIMIZATION
+# =========================================================
+print("\n" + "=" * 60)
+print("PSO: Optimizing Ensemble Weights (maximize Val AUC)")
+print("=" * 60)
+
+def pso_optimize(val_probs, y_val, swarm_size=30, iterations=100, seed=None):
+    rng = np.random.RandomState(seed)
+    n = val_probs.shape[0]
+    w_start, w_end = 0.7, 0.4
+    c1, c2 = 1.5, 1.5
+    v_max = 0.2
+
+    pos = rng.rand(swarm_size, n)
+    pos = pos / pos.sum(axis=1, keepdims=True)
+    vel = rng.uniform(-v_max, v_max, (swarm_size, n))
+
+    def fitness(w):
+        return roc_auc_score(y_val, np.average(val_probs, axis=0, weights=w))
+
+    fit = np.array([fitness(p) for p in pos])
+    pbest_pos = pos.copy()
+    pbest_fit = fit.copy()
+    gbest_idx = np.argmax(fit)
+    gbest_pos = pos[gbest_idx].copy()
+    gbest_fit = fit[gbest_idx]
+    history = [gbest_fit]
+
+    for t in range(iterations):
+        w = w_start - (w_start - w_end) * (t / iterations)
+        for i in range(swarm_size):
+            r1, r2 = rng.rand(n), rng.rand(n)
+            vel[i] = w*vel[i] + c1*r1*(pbest_pos[i]-pos[i]) + c2*r2*(gbest_pos-pos[i])
+            vel[i] = np.clip(vel[i], -v_max, v_max)
+            pos[i] = np.clip(pos[i] + vel[i], 0, 1)
+            s = pos[i].sum()
+            pos[i] = pos[i]/s if s > 0 else np.ones(n)/n
+            fit[i] = fitness(pos[i])
+            if fit[i] > pbest_fit[i]:
+                pbest_fit[i] = fit[i]; pbest_pos[i] = pos[i].copy()
+            if fit[i] > gbest_fit:
+                gbest_fit = fit[i]; gbest_pos = pos[i].copy()
+        history.append(gbest_fit)
+    return gbest_pos, gbest_fit, history
+
+# Multiple restarts
+PSO_RESTARTS = 5
+all_weights, all_fitness, all_histories = [], [], []
+for r in range(PSO_RESTARTS):
+    w, f, h = pso_optimize(val_probs, y_val, 30, 100, seed=42+r*100)
+    all_weights.append(w); all_fitness.append(f); all_histories.append(h)
+    print(f"  Restart {r+1}: AUC={f:.6f}, weights={dict(zip(model_order, np.round(w,4)))}")
+
+best_idx = np.argmax(all_fitness)
+optimal_weights = all_weights[best_idx]
+best_fitness = all_fitness[best_idx]
+
+print(f"\n  Best: AUC={best_fitness:.6f}")
+print(f"  Weights: {dict(zip(model_order, np.round(optimal_weights, 4)))}")
+
+# Top 3 selection
+ranked = np.argsort(optimal_weights)[::-1]
+top3_idx = ranked[:3]
+top3_models = [model_order[i] for i in top3_idx]
+bottom2 = [model_order[i] for i in ranked[3:]]
+print(f"  Top 3: {top3_models}")
+print(f"  Dropped: {bottom2}")
+
+# =========================================================
+# META-FEATURES
+# =========================================================
+X_val_all = val_probs.T
+X_test_all = test_probs.T
+X_val_top3 = val_probs[top3_idx].T
+X_test_top3 = test_probs[top3_idx].T
+
+# PSO-weighted ensemble
+pso_test_probs = np.average(test_probs, axis=0, weights=optimal_weights)
+pso_test_preds = (pso_test_probs > 0.5).astype(int)
+
+# =========================================================
+# TRAIN META-LEARNERS
+# =========================================================
+print("\n" + "=" * 60)
+print("Training Meta-Learners")
+print("=" * 60)
+
+results = {}
+
+configs = [
+    ("All-5 Stacking-GB", X_val_all, X_test_all),
+    ("PSO-3 Stacking-GB", X_val_top3, X_test_top3),
+]
+
+def create_classifier():
+    return GradientBoostingClassifier(
+        n_estimators=100, max_depth=3, learning_rate=0.1,
+        random_state=42
+    )
+
+for name, Xtr, Xte in configs:
+    print(f"  Training {name}...")
+
+    clf = create_classifier()
+
+    clf.fit(Xtr, y_val)
+    yp = clf.predict(Xte)
+    yprob = clf.predict_proba(Xte)[:, 1]
+
+    results[name] = {
+        "accuracy": accuracy_score(y_test, yp),
+        "precision": precision_score(y_test, yp),
+        "recall": recall_score(y_test, yp),
+        "specificity": recall_score(y_test, yp, pos_label=0),
+        "f1": f1_score(y_test, yp),
+        "auc": roc_auc_score(y_test, yprob),
+        "probs": yprob, "preds": yp,
+        "classifier": clf,
+    }
+    print(f"    Acc={results[name]['accuracy']:.4f}  AUC={results[name]['auc']:.4f}  F1={results[name]['f1']:.4f}")
+
+# =========================================================
+# VOTING BASELINES
+# =========================================================
+print("\nVoting baselines:")
+def mets(yp, yprob):
+    return {"accuracy": accuracy_score(y_test, yp), "precision": precision_score(y_test, yp),
+            "recall": recall_score(y_test, yp), "specificity": recall_score(y_test, yp, pos_label=0),
+            "f1": f1_score(y_test, yp), "auc": roc_auc_score(y_test, yprob)}
+
+orig_w = np.array([0.25, 0.20, 0.20, 0.15, 0.20])
+voting = {
+    "Hard Voting (5)": mets((np.sum((test_probs>0.5).astype(int), axis=0)>=3).astype(int), (np.sum((test_probs>0.5).astype(int), axis=0)>=3).astype(float)),
+    "Soft Voting (5)": mets((np.mean(test_probs,axis=0)>0.5).astype(int), np.mean(test_probs,axis=0)),
+    "Weighted Avg (orig)": mets((np.average(test_probs,axis=0,weights=orig_w)>0.5).astype(int), np.average(test_probs,axis=0,weights=orig_w)),
+    "PSO-Weighted (5)": mets(pso_test_preds, pso_test_probs),
+    "Soft Voting (3)": mets((np.mean(test_probs[top3_idx],axis=0)>0.5).astype(int), np.mean(test_probs[top3_idx],axis=0)),
+}
+for n, m in voting.items():
+    print(f"  {n}: Acc={m['accuracy']:.4f}  AUC={m['auc']:.4f}  F1={m['f1']:.4f}")
+
+# =========================================================
+# SAVE METRICS
+# =========================================================
+with open(os.path.join(output_dir, "pso_metrics.txt"), "w") as f:
+    f.write("="*68+"\nPSO-OPTIMIZED MODEL SELECTION RESULTS\n"+"="*68+"\n\n")
+    f.write(f"PSO: 30 particles, 100 iters, 5 restarts. Fitness: Val AUC\n")
+    f.write(f"PSO Weights: {dict(zip(model_order, np.round(optimal_weights,6)))}\n")
+    f.write(f"Top 3: {top3_models} | Dropped: {bottom2}\n\n")
+    f.write("-"*68+"\n")
+    f.write(f"{'Method':<25s} {'Acc':>7s} {'Prec':>7s} {'Recall':>7s} {'Spec':>7s} {'F1':>7s} {'AUC':>7s}\n")
+    f.write("-"*68+"\n")
+
+    order = ["Hard Voting (5)","Soft Voting (5)","Weighted Avg (orig)","PSO-Weighted (5)","Soft Voting (3)",
+             "All-5 Stacking-GB","PSO-3 Stacking-GB"]
+    all_r = {**voting, **results}
+    for n in order:
+        if n in all_r:
+            m = all_r[n]
+            f.write(f"{n:<25s} {m['accuracy']:7.4f} {m['precision']:7.4f} {m['recall']:7.4f} {m['specificity']:7.4f} {m['f1']:7.4f} {m['auc']:7.4f}\n")
+    f.write("-"*68+"\n")
+
+    # Deltas
+    stack5 = {k:v for k,v in results.items() if "All-5" in k}
+    stack3 = {k:v for k,v in results.items() if "PSO-3" in k}
+    if stack5 and stack3:
+        best5a = max(stack5, key=lambda k: stack5[k]["accuracy"])
+        best3a = max(stack3, key=lambda k: stack3[k]["accuracy"])
+        best5u = max(stack5, key=lambda k: stack5[k]["auc"])
+        best3u = max(stack3, key=lambda k: stack3[k]["auc"])
+        f.write(f"\nPSO-3 vs All-5 Delta: Acc={results[best3a]['accuracy']-results[best5a]['accuracy']:+.4f}  AUC={results[best3u]['auc']-results[best5u]['auc']:+.4f}\n")
+
+# Save weights JSON
+with open(os.path.join(output_dir, "pso_weights.json"), "w") as f:
+    json.dump({"optimal_weights": {m: float(w) for m,w in zip(model_order, optimal_weights)},
+               "top3": top3_models, "dropped": bottom2, "pso_auc_val": float(best_fitness)}, f, indent=2)
+
+# =========================================================
+# PLOTS
+# =========================================================
+print("\nGenerating plots...")
+
+# Convergence
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+for i, h in enumerate(all_histories):
+    ax1.plot(h, lw=2 if i==best_idx else 1, alpha=1 if i==best_idx else 0.3, label=f"R{i+1}"+(" (best)" if i==best_idx else ""))
+ax1.set_xlabel("Iteration"); ax1.set_ylabel("Val AUC"); ax1.set_title("PSO Convergence"); ax1.legend(fontsize=8); ax1.grid(alpha=0.3)
+
+# Weights
+x = np.arange(N_MODELS)
+w = 0.35
+ax2.bar(x-w/2, optimal_weights, w, label='PSO', color='#2ca02c')
+ax2.bar(x+w/2, orig_w, w, label='Original', color='#1f77b4')
+ax2.set_xticks(x); ax2.set_xticklabels(model_order, rotation=30, ha='right')
+ax2.set_ylabel('Weight'); ax2.set_title('PSO vs Original Weights'); ax2.legend(); ax2.grid(alpha=0.3, axis='y')
+plt.tight_layout(); plt.savefig(os.path.join(output_dir, "pso_convergence.png"), dpi=150); plt.close()
+
+# ROC
+plt.figure(figsize=(12, 9))
+colors = ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd']
+for i, name in enumerate(model_order):
+    fpr, tpr, _ = roc_curve(y_test, test_probs[i])
+    plt.plot(fpr, tpr, color=colors[i], lw=1, alpha=0.4, label=f'{name} (AUC={roc_auc_score(y_test,test_probs[i]):.4f})')
+for vname, prob, c, ls in [("PSO-Weighted", pso_test_probs, '#2ca02c','-'), ("Weighted Avg", np.average(test_probs,axis=0,weights=orig_w), 'gray','--')]:
+    fpr, tpr, _ = roc_curve(y_test, prob)
+    plt.plot(fpr, tpr, c=c, ls=ls, lw=3, label=f'{vname} (AUC={voting.get(vname,{"auc":0})["auc"]:.4f})')
+for sname, c in [("All-5 Stacking-GB",'#2ca02c'),("PSO-3 Stacking-GB",'orange')]:
+    if sname in results:
+        fpr, tpr, _ = roc_curve(y_test, results[sname]["probs"])
+        plt.plot(fpr, tpr, c=c, lw=2, label=f'{sname} (AUC={results[sname]["auc"]:.4f})')
+plt.plot([0,1],[0,1],'k--',lw=1,alpha=0.3)
+plt.xlabel('FPR'); plt.ylabel('TPR'); plt.title(f'ROC: PSO Top-3 = {", ".join(top3_models)}')
+plt.legend(fontsize=8); plt.grid(alpha=0.3)
+plt.savefig(os.path.join(output_dir, "pso_roc_comparison.png"), dpi=150); plt.close()
+
+print(f"\nAll results saved to {output_dir}/")
+
+
+pso selection
+"""
+PSO-Optimized Model Selection for Stacking Ensemble
+====================================================
+Uses Particle Swarm Optimization to find optimal ensemble weights,
+then selects the top 3 models by weight and trains a Gradient Boosting
+meta-learner for the final stacking ensemble.
+
+Pipeline:
+  1. Load/generate base model predictions on val & test sets
+  2. PSO: find optimal continuous weights for all 5 models (maximize val AUC)
+  3. Extract top 3 models by PSO weight
+  4. Train Gradient Boosting meta-learner on top-3 subset
+  5. Compare: PSO-weighted ensemble, PSO-3 stacking, all-5 stacking, voting
+
+PSO Parameters:
+  - Swarm size: 30 particles
+  - Iterations: 100
+  - Inertia: 0.7 → 0.4 (linearly decaying)
+  - Cognitive/Social coefficients: c1=1.5, c2=1.5
+  - Fitness: AUC on validation set
+  - Bounds: [0, 1] per weight, normalized to sum=1
+"""
+import os
+import sys
+import warnings
+import json
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
+
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.applications.efficientnet import preprocess_input as eff_pre
+from tensorflow.keras.applications.densenet import preprocess_input as den_pre
+from tensorflow.keras.applications.resnet import preprocess_input as res_pre
+from tensorflow.keras.applications.vgg16 import preprocess_input as vgg_pre
+from tensorflow.keras.applications.xception import preprocess_input as xcep_pre
+
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score,
+    f1_score, roc_auc_score, roc_curve
+)
+
+warnings.filterwarnings('ignore')
+
+# =========================================================
+# PATHS
+# =========================================================
+base_dir = 'datasets_split'
+val_dir = os.path.join(base_dir, 'val')
+test_dir = os.path.join(base_dir, 'test')
+cache_dir = 'pso_cache'
+os.makedirs(cache_dir, exist_ok=True)
+
+output_dir = 'PSO_Result'
+os.makedirs(output_dir, exist_ok=True)
+
+# =========================================================
+# PARAMETERS
+# =========================================================
+img_size = (224, 224)
+batch_size = 32
+PSO_SWARM_SIZE = 30
+PSO_ITERATIONS = 100
+PSO_RESTARTS = 5     # multiple restarts to avoid local optima
+RANDOM_SEED = 42
+
+np.random.seed(RANDOM_SEED)
+
+# =========================================================
+# MODELS + PREPROCESSING
+# =========================================================
+models_info = {
+    "EfficientNet": {"path": "models/efficientnet_final_model.keras", "preprocess": eff_pre},
+    "DenseNet":    {"path": "models/densenet_final_model.keras",    "preprocess": den_pre},
+    "ResNet":      {"path": "models/resnet_final_model.keras",      "preprocess": res_pre},
+    "VGG16":       {"path": "models/vgg16_final_model.keras",       "preprocess": vgg_pre},
+    "Xception":    {"path": "models/xception_final_model.keras",    "preprocess": xcep_pre},
+}
+model_order = list(models_info.keys())
+N_MODELS = len(model_order)
+
+# =========================================================
+# LOAD OR GENERATE PREDICTIONS
+# =========================================================
+val_cache_path = os.path.join(cache_dir, "val_probs.npy")
+test_cache_path = os.path.join(cache_dir, "test_probs.npy")
+val_labels_path = os.path.join(cache_dir, "val_labels.npy")
+test_labels_path = os.path.join(cache_dir, "test_labels.npy")
+
+cache_exists = all(os.path.exists(p) for p in [
+    val_cache_path, test_cache_path, val_labels_path, test_labels_path
+])
+
+if cache_exists:
+    print("Loading cached predictions...")
+    val_probs_all = np.load(val_cache_path)    # (N_models, N_val)
+    test_probs_all = np.load(test_cache_path)  # (N_models, N_test)
+    y_val = np.load(val_labels_path)
+    y_test = np.load(test_labels_path)
+    print(f"  Validation: {len(y_val)} samples")
+    print(f"  Test: {len(y_test)} samples")
+else:
+    print("=" * 60)
+    print("Generating predictions (will be cached for future runs)")
+    print("=" * 60)
+
+    val_probs_list = []
+    test_probs_list = []
+    y_val = None
+    y_test = None
+
+    for name in model_order:
+        info = models_info[name]
+
+        # --- Validation set ---
+        print(f"\n  Loading {name}...")
+        model = tf.keras.models.load_model(info["path"])
+
+        datagen = ImageDataGenerator(preprocessing_function=info["preprocess"])
+        val_gen = datagen.flow_from_directory(
+            val_dir, target_size=img_size, batch_size=batch_size,
+            class_mode='binary', shuffle=False
+        )
+        if y_val is None:
+            y_val = val_gen.classes
+
+        print(f"  Predicting {name} on {len(y_val)} val samples...")
+        val_probs_list.append(model.predict(val_gen, verbose=0).flatten())
+
+        # --- Test set ---
+        test_gen = datagen.flow_from_directory(
+            test_dir, target_size=img_size, batch_size=batch_size,
+            class_mode='binary', shuffle=False
+        )
+        if y_test is None:
+            y_test = test_gen.classes
+
+        print(f"  Predicting {name} on {len(y_test)} test samples...")
+        test_probs_list.append(model.predict(test_gen, verbose=0).flatten())
+
+        del model
+
+    val_probs_all = np.array(val_probs_list)    # (5, N_val)
+    test_probs_all = np.array(test_probs_list)  # (5, N_test)
+
+    # Cache
+    np.save(val_cache_path, val_probs_all)
+    np.save(test_cache_path, test_probs_all)
+    np.save(val_labels_path, y_val)
+    np.save(test_labels_path, y_test)
+    print(f"\n  Predictions cached to {cache_dir}/")
+
+print(f"  Val: benign={np.sum(y_val == 0)}, malignant={np.sum(y_val == 1)}")
+print(f"  Test: benign={np.sum(y_test == 0)}, malignant={np.sum(y_test == 1)}")
+
+# =========================================================
+# PSO IMPLEMENTATION (manual, no external dependencies)
+# =========================================================
+def pso_optimize_weights(val_probs, y_val, swarm_size, iterations, seed=None):
+    """
+    Particle Swarm Optimization for ensemble weight optimization.
+
+    Each particle is a 5D weight vector. Fitness = AUC on validation set.
+    Weights are normalized to sum=1 after each update.
+
+    Returns: (best_weights, best_fitness, history)
+    """
+    rng = np.random.RandomState(seed)
+    n_models = val_probs.shape[0]
+
+    # PSO hyperparameters
+    w_start, w_end = 0.7, 0.4        # inertia (linear decay)
+    c1, c2 = 1.5, 1.5               # cognitive, social coefficients
+    v_max = 0.2                       # velocity clamping
+
+    # Initialize swarm
+    positions = rng.rand(swarm_size, n_models)
+    positions = positions / positions.sum(axis=1, keepdims=True)  # normalize
+
+    velocities = rng.uniform(-v_max, v_max, (swarm_size, n_models))
+
+    # Evaluate initial fitness
+    def compute_fitness(weights):
+        """Weighted ensemble AUC on validation set."""
+        ensemble_probs = np.average(val_probs, axis=0, weights=weights)
+        return roc_auc_score(y_val, ensemble_probs)
+
+    fitness = np.array([compute_fitness(p) for p in positions])
+
+    pbest_positions = positions.copy()
+    pbest_fitness = fitness.copy()
+
+    gbest_idx = np.argmax(fitness)
+    gbest_position = positions[gbest_idx].copy()
+    gbest_fitness = fitness[gbest_idx]
+
+    history = [gbest_fitness]
+
+    # Main PSO loop
+    for iter_idx in range(iterations):
+        w = w_start - (w_start - w_end) * (iter_idx / iterations)
+
+        for i in range(swarm_size):
+            r1, r2 = rng.rand(n_models), rng.rand(n_models)
+
+            # Velocity update
+            velocities[i] = (
+                w * velocities[i]
+                + c1 * r1 * (pbest_positions[i] - positions[i])
+                + c2 * r2 * (gbest_position - positions[i])
+            )
+
+            # Clamp velocity
+            velocities[i] = np.clip(velocities[i], -v_max, v_max)
+
+            # Position update
+            positions[i] = positions[i] + velocities[i]
+
+            # Clamp and normalize
+            positions[i] = np.clip(positions[i], 0, 1)
+            pos_sum = positions[i].sum()
+            if pos_sum > 0:
+                positions[i] = positions[i] / pos_sum
+            else:
+                positions[i] = np.ones(n_models) / n_models
+
+            # Evaluate
+            fitness[i] = compute_fitness(positions[i])
+
+            # Update personal best
+            if fitness[i] > pbest_fitness[i]:
+                pbest_fitness[i] = fitness[i]
+                pbest_positions[i] = positions[i].copy()
+
+            # Update global best
+            if fitness[i] > gbest_fitness:
+                gbest_fitness = fitness[i]
+                gbest_position = positions[i].copy()
+
+        history.append(gbest_fitness)
+
+    return gbest_position, gbest_fitness, history
+
+# =========================================================
+# RUN PSO WITH MULTIPLE RESTARTS
+# =========================================================
+print("\n" + "=" * 60)
+print("PSO: Optimizing Ensemble Weights (maximize Val AUC)")
+print("=" * 60)
+print(f"  Swarm: {PSO_SWARM_SIZE} particles, {PSO_ITERATIONS} iterations")
+print(f"  Restarts: {PSO_RESTARTS}")
+
+all_best_weights = []
+all_best_fitness = []
+all_histories = []
+
+for restart in range(PSO_RESTARTS):
+    seed = RANDOM_SEED + restart * 100
+    weights, fitness, history = pso_optimize_weights(
+        val_probs_all, y_val, PSO_SWARM_SIZE, PSO_ITERATIONS, seed=seed
+    )
+    all_best_weights.append(weights)
+    all_best_fitness.append(fitness)
+    all_histories.append(history)
+    print(f"  Restart {restart+1}: AUC={fitness:.6f}, "
+          f"weights={dict(zip(model_order, np.round(weights, 4)))}")
+
+# Select best across restarts
+best_idx = np.argmax(all_best_fitness)
+optimal_weights = all_best_weights[best_idx]
+best_fitness = all_best_fitness[best_idx]
+best_history = all_histories[best_idx]
+
+print(f"\n  Best PSO run (restart {best_idx+1}): AUC={best_fitness:.6f}")
+print(f"  Optimal weights: {dict(zip(model_order, np.round(optimal_weights, 4)))}")
+
+# =========================================================
+# SELECT TOP 3 MODELS BY PSO WEIGHT
+# =========================================================
+print("\n" + "=" * 60)
+print("Selecting Top 3 Models by PSO Weight")
+print("=" * 60)
+
+ranked_indices = np.argsort(optimal_weights)[::-1]
+top3_indices = ranked_indices[:3]
+bottom2_indices = ranked_indices[3:]
+
+top3_models = [model_order[i] for i in top3_indices]
+top3_weights = optimal_weights[top3_indices]
+bottom2_models = [model_order[i] for i in bottom2_indices]
+bottom2_weights = optimal_weights[bottom2_indices]
+
+for i, (model, w, rank) in enumerate(zip(
+    [model_order[i] for i in ranked_indices],
+    optimal_weights[ranked_indices],
+    range(1, N_MODELS + 1)
+)):
+    marker = " <<< SELECTED" if model in top3_models else ""
+    print(f"  #{rank}: {model:<15s} weight={w:.4f}{marker}")
+
+print(f"\n  Top 3:   {top3_models}")
+print(f"  Dropped: {bottom2_models} (combined weight: {bottom2_weights.sum():.4f})")
+
+# =========================================================
+# BUILD META-FEATURES: ALL-5 vs TOP-3
+# =========================================================
+# All 5 models
+X_val_all = val_probs_all.T              # (N_val, 5)
+X_test_all = test_probs_all.T            # (N_test, 5)
+
+# Top 3 only
+X_val_top3 = val_probs_all[top3_indices].T   # (N_val, 3)
+X_test_top3 = test_probs_all[top3_indices].T # (N_test, 3)
+
+# PSO-weighted ensemble (on all 5)
+pso_val_probs = np.average(val_probs_all, axis=0, weights=optimal_weights)
+pso_test_probs = np.average(test_probs_all, axis=0, weights=optimal_weights)
+pso_val_preds = (pso_val_probs > 0.5).astype(int)
+pso_test_preds = (pso_test_probs > 0.5).astype(int)
+
+# =========================================================
+# TRAIN META-LEARNERS
+# =========================================================
+print("\n" + "=" * 60)
+print("Training Meta-Learners (Gradient Boosting)")
+print("=" * 60)
+
+results = {}
+
+stacking_configs = [
+    ("All-5 Stacking-GB", 5, X_val_all, X_test_all),
+    ("PSO-3 Stacking-GB", 3, X_val_top3, X_test_top3),
+]
+
+def create_classifier():
+    return GradientBoostingClassifier(
+        n_estimators=100, max_depth=3, learning_rate=0.1,
+        random_state=42
+    )
+
+for name, n_feat, X_val_raw, X_test_raw in stacking_configs:
+    print(f"\n  Training {name} ({n_feat} features)...")
+
+    clf = create_classifier()
+
+    clf.fit(X_val_raw, y_val)
+
+    y_pred = clf.predict(X_test_raw)
+    y_prob = clf.predict_proba(X_test_raw)[:, 1]
+
+    results[name] = {
+        "accuracy": accuracy_score(y_test, y_pred),
+        "precision": precision_score(y_test, y_pred),
+        "recall": recall_score(y_test, y_pred),
+        "specificity": recall_score(y_test, y_pred, pos_label=0),
+        "f1": f1_score(y_test, y_pred),
+        "auc": roc_auc_score(y_test, y_prob),
+        "predictions": y_pred,
+        "probabilities": y_prob,
+        "classifier": clf,
+        "n_features": n_feat,
+        "models_used": top3_models if "PSO-3" in name else model_order,
+    }
+
+    print(f"    Accuracy={results[name]['accuracy']:.4f}  "
+          f"Precision={results[name]['precision']:.4f}  "
+          f"Recall={results[name]['recall']:.4f}")
+    print(f"    Specificity={results[name]['specificity']:.4f}  "
+          f"F1={results[name]['f1']:.4f}  "
+          f"AUC={results[name]['auc']:.4f}")
+
+# =========================================================
+# VOTING BASELINES
+# =========================================================
+print("\n" + "=" * 60)
+print("Voting Baselines (on TEST set)")
+print("=" * 60)
+
+# Hard voting (all 5)
+hard_preds_all5 = (np.sum((test_probs_all > 0.5).astype(int), axis=0) >= 3).astype(int)
+
+# Soft voting (all 5)
+soft_probs_all5 = np.mean(test_probs_all, axis=0)
+soft_preds_all5 = (soft_probs_all5 > 0.5).astype(int)
+
+# Weighted averaging (original weights)
+orig_weights = np.array([0.25, 0.20, 0.20, 0.15, 0.20])
+weighted_probs_orig = np.average(test_probs_all, axis=0, weights=orig_weights)
+weighted_preds_orig = (weighted_probs_orig > 0.5).astype(int)
+
+def compute_metrics(y_true, y_pred, y_prob):
+    return {
+        "accuracy": accuracy_score(y_true, y_pred),
+        "precision": precision_score(y_true, y_pred),
+        "recall": recall_score(y_true, y_pred),
+        "specificity": recall_score(y_true, y_pred, pos_label=0),
+        "f1": f1_score(y_true, y_pred),
+        "auc": roc_auc_score(y_true, y_prob),
+    }
+
+voting_results = {
+    "Hard Voting (5)": compute_metrics(y_test, hard_preds_all5, hard_preds_all5.astype(float)),
+    "Soft Voting (5)": compute_metrics(y_test, soft_preds_all5, soft_probs_all5),
+    "Weighted Avg (orig)": compute_metrics(y_test, weighted_preds_orig, weighted_probs_orig),
+    "PSO-Weighted (5)": compute_metrics(y_test, pso_test_preds, pso_test_probs),
+}
+
+# Soft voting with only top 3
+soft_probs_top3 = np.mean(test_probs_all[top3_indices], axis=0)
+soft_preds_top3 = (soft_probs_top3 > 0.5).astype(int)
+voting_results["Soft Voting (3)"] = compute_metrics(y_test, soft_preds_top3, soft_probs_top3)
+
+for name, m in voting_results.items():
+    print(f"  {name:<22s}: Acc={m['accuracy']:.4f}  AUC={m['auc']:.4f}  F1={m['f1']:.4f}")
+
+# =========================================================
+# SAVE METRICS
+# =========================================================
+metrics_path = os.path.join(output_dir, "pso_metrics.txt")
+with open(metrics_path, "w") as f:
+    f.write("=" * 68 + "\n")
+    f.write("PSO-OPTIMIZED MODEL SELECTION RESULTS\n")
+    f.write("=" * 68 + "\n\n")
+
+    f.write(f"PSO Configuration:\n")
+    f.write(f"  Swarm size: {PSO_SWARM_SIZE}, Iterations: {PSO_ITERATIONS}\n")
+    f.write(f"  Restarts: {PSO_RESTARTS}\n")
+    f.write(f"  Fitness: AUC on validation set ({len(y_val)} samples)\n\n")
+
+    f.write(f"PSO-Optimized Weights:\n")
+    for model, w in zip(model_order, optimal_weights):
+        f.write(f"  {model:<15s}: {w:.6f}\n")
+
+    f.write(f"\nTop 3 Selected: {', '.join(top3_models)}\n")
+    f.write(f"Dropped:        {', '.join(bottom2_models)}\n")
+    f.write(f"Top 3 weight sum: {top3_weights.sum():.4f}\n\n")
+
+    f.write("-" * 68 + "\n")
+    f.write(f"{'Method':<25s} {'Acc':>7s} {'Prec':>7s} {'Recall':>7s} {'Spec':>7s} {'F1':>7s} {'AUC':>7s}\n")
+    f.write("-" * 68 + "\n")
+
+    all_results = {**voting_results, **results}
+    display_order = [
+        "Hard Voting (5)", "Soft Voting (5)", "Weighted Avg (orig)",
+        "PSO-Weighted (5)", "Soft Voting (3)",
+        "All-5 Stacking-GB",
+        "PSO-3 Stacking-GB",
+    ]
+
+    for name in display_order:
+        if name in all_results:
+            m = all_results[name]
+            f.write(f"{name:<25s} {m['accuracy']:7.4f} {m['precision']:7.4f} "
+                    f"{m['recall']:7.4f} {m['specificity']:7.4f} "
+                    f"{m['f1']:7.4f} {m['auc']:7.4f}\n")
+
+    f.write("-" * 68 + "\n")
+
+    # Best findings
+    stacking_all = {k: v for k, v in results.items() if "All-5" in k}
+    stacking_pso3 = {k: v for k, v in results.items() if "PSO-3" in k}
+
+    best_all_acc = max(stacking_all, key=lambda k: stacking_all[k]["accuracy"])
+    best_pso3_acc = max(stacking_pso3, key=lambda k: stacking_pso3[k]["accuracy"])
+    best_all_auc = max(stacking_all, key=lambda k: stacking_all[k]["auc"])
+    best_pso3_auc = max(stacking_pso3, key=lambda k: stacking_pso3[k]["auc"])
+    best_voting_acc = max(voting_results, key=lambda k: voting_results[k]["accuracy"])
+    best_voting_auc = max(voting_results, key=lambda k: voting_results[k]["auc"])
+
+    f.write(f"\nBest All-5 Stacking:  {best_all_acc} (Acc={results[best_all_acc]['accuracy']:.4f}, AUC={results[best_all_acc]['auc']:.4f})\n")
+    f.write(f"Best PSO-3 Stacking:  {best_pso3_acc} (Acc={results[best_pso3_acc]['accuracy']:.4f}, AUC={results[best_pso3_acc]['auc']:.4f})\n")
+    f.write(f"PSO-Weighted (5):     Acc={voting_results['PSO-Weighted (5)']['accuracy']:.4f}, AUC={voting_results['PSO-Weighted (5)']['auc']:.4f}\n")
+
+    f.write(f"\nPSO-3 vs All-5 Delta:\n")
+    f.write(f"  Accuracy: {results[best_pso3_acc]['accuracy'] - results[best_all_acc]['accuracy']:+.4f}\n")
+    f.write(f"  AUC:      {results[best_pso3_auc]['auc'] - results[best_all_auc]['auc']:+.4f}\n")
+    f.write(f"  Features: 3 vs {results[best_all_acc]['n_features']}\n")
+
+print(f"\n  Metrics saved to: {metrics_path}")
+
+# =========================================================
+# PSO CONVERGENCE PLOT
+# =========================================================
+print("\nGenerating PSO convergence plot...")
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# Convergence curves for all restarts
+ax = axes[0]
+for i, hist in enumerate(all_histories):
+    alpha = 1.0 if i == best_idx else 0.3
+    lw = 2 if i == best_idx else 1
+    label = f'Restart {i+1}' + (' (best)' if i == best_idx else '')
+    ax.plot(range(len(hist)), hist, linewidth=lw, alpha=alpha, label=label)
+ax.set_xlabel('Iteration', fontsize=11)
+ax.set_ylabel('Validation AUC', fontsize=11)
+ax.set_title('PSO Convergence (5 Restarts)', fontsize=13)
+ax.legend(fontsize=8)
+ax.grid(True, alpha=0.3)
+
+# Weight comparison: PSO vs Original
+ax = axes[1]
+x = np.arange(N_MODELS)
+width = 0.35
+bars1 = ax.bar(x - width/2, optimal_weights, width, label='PSO-Optimized', color='#2ca02c')
+bars2 = ax.bar(x + width/2, orig_weights, width, label='Original (hand-tuned)', color='#1f77b4')
+ax.set_xticks(x)
+ax.set_xticklabels(model_order, rotation=30, ha='right')
+ax.set_ylabel('Weight', fontsize=11)
+ax.set_title('PSO vs Original Ensemble Weights', fontsize=13)
+ax.legend(fontsize=9)
+ax.grid(True, alpha=0.3, axis='y')
+
+# Annotate bar values
+for bar, w in zip(bars1, optimal_weights):
+    ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+            f'{w:.3f}', ha='center', fontsize=9)
+for bar, w in zip(bars2, orig_weights):
+    ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+            f'{w:.3f}', ha='center', fontsize=9)
+
+plt.tight_layout()
+conv_path = os.path.join(output_dir, "pso_convergence.png")
+plt.savefig(conv_path, dpi=150, bbox_inches='tight')
+plt.close()
+print(f"  Convergence plot saved to: {conv_path}")
+
+# =========================================================
+# ROC COMPARISON PLOT
+# =========================================================
+print("Generating ROC comparison plot...")
+
+plt.figure(figsize=(12, 9))
+
+# Individual models
+colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+for idx, name in enumerate(model_order):
+    fpr, tpr, _ = roc_curve(y_test, test_probs_all[idx])
+    auc_val = roc_auc_score(y_test, test_probs_all[idx])
+    plt.plot(fpr, tpr, color=colors[idx], linewidth=1, alpha=0.4,
+             label=f'{name} (AUC={auc_val:.4f})')
+
+# Voting baselines
+voting_plot_styles = [
+    ("Weighted Avg (orig)", weighted_probs_orig, 'gray', '--', 1.5),
+    ("PSO-Weighted (5)", pso_test_probs, '#2ca02c', '-', 3),
+]
+for vname, prob, color, style, width in voting_plot_styles:
+    if vname in voting_results:
+        fpr, tpr, _ = roc_curve(y_test, prob)
+        plt.plot(fpr, tpr, linestyle=style, linewidth=width, color=color, alpha=0.8,
+                 label=f'{vname} (AUC={voting_results[vname]["auc"]:.4f})')
+
+# Best stacking results
+stacking_colors = {
+    'All-5 Stacking-GB': '#2ca02c',
+    'PSO-3 Stacking-GB': 'orange',
+}
+for sname, color in stacking_colors.items():
+    if sname in results:
+        fpr, tpr, _ = roc_curve(y_test, results[sname]["probabilities"])
+        plt.plot(fpr, tpr, linewidth=2, linestyle='-', color=color, alpha=0.8,
+                 label=f'{sname} (AUC={results[sname]["auc"]:.4f})')
+
+plt.plot([0, 1], [0, 1], 'k--', linewidth=1, alpha=0.3)
+plt.xlabel('False Positive Rate', fontsize=12)
+plt.ylabel('True Positive Rate', fontsize=12)
+plt.title(f'ROC Curves: PSO-Optimized vs Baselines\nTop 3 Models: {", ".join(top3_models)}', fontsize=14)
+plt.legend(loc='lower right', fontsize=8)
+plt.grid(True, alpha=0.3)
+
+roc_path = os.path.join(output_dir, "pso_roc_comparison.png")
+plt.savefig(roc_path, dpi=150, bbox_inches='tight')
+plt.close()
+print(f"  ROC plot saved to: {roc_path}")
+
+# =========================================================
+# GB FEATURE IMPORTANCE (PSO-3 if available)
+# =========================================================
+gb_key = "PSO-3 Stacking-GB"
+if gb_key in results:
+    gb_clf = results[gb_key]["classifier"]
+    importances = gb_clf.feature_importances_
+
+    plt.figure(figsize=(7, 5))
+    top3_colors = [colors[top3_indices[i]] for i in range(3)]
+    bars = plt.bar(top3_models, importances, color=top3_colors)
+    plt.ylabel('Feature Importance', fontsize=12)
+    plt.title(f'Gradient Boosting Meta-Learner: PSO-Selected Model Importance', fontsize=13)
+
+    for bar, imp in zip(bars, importances):
+        plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.005,
+                 f'{imp:.4f}', ha='center', fontsize=10)
+
+    plt.tight_layout()
+    fi_path = os.path.join(output_dir, "pso_gb_importance.png")
+    plt.savefig(fi_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"  GB importance plot saved to: {fi_path}")
+
+# =========================================================
+# SAVE PSO WEIGHTS AS JSON
+# =========================================================
+pso_data = {
+    "optimal_weights": {model: float(w) for model, w in zip(model_order, optimal_weights)},
+    "top3_models": top3_models,
+    "dropped_models": bottom2_models,
+    "pso_auc_val": float(best_fitness),
+    "pso_parameters": {
+        "swarm_size": PSO_SWARM_SIZE,
+        "iterations": PSO_ITERATIONS,
+        "restarts": PSO_RESTARTS,
+        "inertia_range": [0.7, 0.4],
+        "c1": 1.5,
+        "c2": 1.5,
+    },
+    "original_weights": {model: float(w) for model, w in zip(model_order, orig_weights)},
+}
+with open(os.path.join(output_dir, "pso_weights.json"), "w") as f:
+    json.dump(pso_data, f, indent=2)
+
+# =========================================================
+# FINAL SUMMARY
+# =========================================================
+print("\n" + "=" * 68)
+print("FINAL SUMMARY: PSO Model Selection")
+print("=" * 68)
+
+print(f"\n  PSO-Optimized Weights: {dict(zip(model_order, np.round(optimal_weights, 4)))}")
+print(f"  Top 3 Selected: {top3_models}")
+print(f"  Dropped: {bottom2_models}")
+
+print(f"\n{'Method':<25s} {'Acc':>7s} {'Prec':>7s} {'Recall':>7s} {'Spec':>7s} {'F1':>7s} {'AUC':>7s}")
+print("-" * 68)
+
+all_r = {**voting_results, **results}
+for name in display_order:
+    if name in all_r:
+        m = all_r[name]
+        best_marker = ""
+        if "PSO-3" in name or "PSO-Weighted" in name:
+            best_marker = "  <-- PSO"
+        print(f"{name:<25s} {m['accuracy']:7.4f} {m['precision']:7.4f} "
+              f"{m['recall']:7.4f} {m['specificity']:7.4f} "
+              f"{m['f1']:7.4f} {m['auc']:7.4f}{best_marker}")
+
+print("-" * 68)
+print(f"\nAll results saved in: {output_dir}/")
+
+"""
+Stacking Ensemble for BreastVisionAI
+=====================================
+Implements prediction-level stacking with Gradient Boosting as the
+single meta-learner. The meta-learner is trained on OOF (out-of-fold)
+predictions from the five CNN base learners on the validation set,
+then evaluated on the held-out test set.
+
+CRITICAL: Uses validation set for OOF (out-of-fold) meta-learner training,
+          then evaluates on held-out test set to prevent data leakage.
+
+Expected directory layout (run from project root):
+  BreastVisionAI/
+    models/          -- all 5 .keras models
+    datasets_split/  -- train/val/test splits
+"""
+import os
+import sys
+import warnings
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
+
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.applications.efficientnet import preprocess_input as eff_pre
+from tensorflow.keras.applications.densenet import preprocess_input as den_pre
+from tensorflow.keras.applications.resnet import preprocess_input as res_pre
+from tensorflow.keras.applications.vgg16 import preprocess_input as vgg_pre
+from tensorflow.keras.applications.xception import preprocess_input as xcep_pre
+
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score,
+    f1_score, roc_auc_score, roc_curve
+)
+
+warnings.filterwarnings('ignore')
+
+# =========================================================
+# PATHS
+# =========================================================
+base_dir = 'datasets_split'
+val_dir = os.path.join(base_dir, 'val')
+test_dir = os.path.join(base_dir, 'test')
+
+output_dir = 'Stacking_Result'
+os.makedirs(output_dir, exist_ok=True)
+
+# =========================================================
+# PARAMETERS
+# =========================================================
+img_size = (224, 224)
+batch_size = 32
+
+# =========================================================
+# MODELS + PREPROCESSING
+# =========================================================
+models_info = {
+    "EfficientNet": {"path": "models/efficientnet_final_model.keras", "preprocess": eff_pre},
+    "DenseNet":    {"path": "models/densenet_final_model.keras",    "preprocess": den_pre},
+    "ResNet":      {"path": "models/resnet_final_model.keras",      "preprocess": res_pre},
+    "VGG16":       {"path": "models/vgg16_final_model.keras",       "preprocess": vgg_pre},
+    "Xception":    {"path": "models/xception_final_model.keras",    "preprocess": xcep_pre},
+}
+model_order = list(models_info.keys())
+
+# =========================================================
+# GENERATE PREDICTIONS ON VALIDATION SET (OOF)
+# =========================================================
+print("=" * 60)
+print("STEP 1: Generating OOF predictions on VALIDATION set")
+print("=" * 60)
+
+val_probs = {}
+y_val = None
+
+for name in model_order:
+    info = models_info[name]
+    print(f"  Loading {name}...")
+    model = tf.keras.models.load_model(info["path"])
+
+    datagen = ImageDataGenerator(preprocessing_function=info["preprocess"])
+    generator = datagen.flow_from_directory(
+        val_dir,
+        target_size=img_size,
+        batch_size=batch_size,
+        class_mode='binary',
+        shuffle=False
+    )
+
+    if y_val is None:
+        y_val = generator.classes
+
+    print(f"  Predicting {name} on {len(y_val)} validation samples...")
+    probs = model.predict(generator, verbose=0).flatten()
+    val_probs[name] = probs
+    del model  # free memory
+
+print(f"\n  Validation set: {len(y_val)} samples")
+print(f"  Class distribution: benign={np.sum(y_val == 0)}, malignant={np.sum(y_val == 1)}")
+
+# =========================================================
+# GENERATE PREDICTIONS ON TEST SET
+# =========================================================
+print("\n" + "=" * 60)
+print("STEP 2: Generating predictions on TEST set")
+print("=" * 60)
+
+test_probs = {}
+y_test = None
+
+for name in model_order:
+    info = models_info[name]
+    print(f"  Loading {name}...")
+    model = tf.keras.models.load_model(info["path"])
+
+    datagen = ImageDataGenerator(preprocessing_function=info["preprocess"])
+    generator = datagen.flow_from_directory(
+        test_dir,
+        target_size=img_size,
+        batch_size=batch_size,
+        class_mode='binary',
+        shuffle=False
+    )
+
+    if y_test is None:
+        y_test = generator.classes
+
+    print(f"  Predicting {name} on {len(y_test)} test samples...")
+    probs = model.predict(generator, verbose=0).flatten()
+    test_probs[name] = probs
+    del model  # free memory
+
+print(f"\n  Test set: {len(y_test)} samples")
+print(f"  Class distribution: benign={np.sum(y_test == 0)}, malignant={np.sum(y_test == 1)}")
+
+# =========================================================
+# BUILD META-FEATURE MATRIX (N_samples x 5)
+# =========================================================
+X_val = np.column_stack([val_probs[name] for name in model_order])
+X_test = np.column_stack([test_probs[name] for name in model_order])
+
+print(f"\nMeta-feature shape: train={X_val.shape}, test={X_test.shape}")
+
+# =========================================================
+# TRAIN & EVALUATE META-LEARNER
+# =========================================================
+print("\n" + "=" * 60)
+print("STEP 3: Training Meta-Learner (Gradient Boosting) on VAL predictions")
+print("=" * 60)
+
+meta_learner = GradientBoostingClassifier(
+    n_estimators=100, max_depth=3, learning_rate=0.1,
+    random_state=42
+)
+
+print(f"\n  Training Stacking-GB...")
+meta_learner.fit(X_val, y_val)
+
+y_pred = meta_learner.predict(X_test)
+y_prob = meta_learner.predict_proba(X_test)[:, 1]
+
+acc = accuracy_score(y_test, y_pred)
+prec = precision_score(y_test, y_pred)
+rec = recall_score(y_test, y_pred)
+spec = recall_score(y_test, y_pred, pos_label=0)
+f1 = f1_score(y_test, y_pred)
+auc = roc_auc_score(y_test, y_prob)
+
+results = {
+    "Stacking-GB": {
+        "accuracy": acc, "precision": prec, "recall": rec,
+        "specificity": spec, "f1": f1, "auc": auc,
+        "predictions": y_pred, "probabilities": y_prob,
+        "classifier": meta_learner,
+    }
+}
+
+print(f"    Accuracy={acc:.4f}  Precision={prec:.4f}  Recall={rec:.4f}")
+print(f"    Specificity={spec:.4f}  F1={f1:.4f}  AUC={auc:.4f}")
+
+# =========================================================
+# BASELINE: EXISTING VOTING METHODS (on test set)
+# =========================================================
+print("\n" + "=" * 60)
+print("STEP 4: Existing Voting Baselines (on TEST set)")
+print("=" * 60)
+
+all_test_probs = np.array([test_probs[name] for name in model_order])
+
+# Hard voting
+hard_preds = (np.sum((all_test_probs > 0.5).astype(int), axis=0) >= 3).astype(int)
+
+# Soft voting
+soft_probs = np.mean(all_test_probs, axis=0)
+soft_preds = (soft_probs > 0.5).astype(int)
+
+# Weighted averaging
+weights = np.array([0.25, 0.20, 0.20, 0.15, 0.20])
+weighted_probs = np.average(all_test_probs, axis=0, weights=weights)
+weighted_preds = (weighted_probs > 0.5).astype(int)
+
+def compute_metrics(y_true, y_pred, y_prob):
+    return {
+        "accuracy": accuracy_score(y_true, y_pred),
+        "precision": precision_score(y_true, y_pred),
+        "recall": recall_score(y_true, y_pred),
+        "specificity": recall_score(y_true, y_pred, pos_label=0),
+        "f1": f1_score(y_true, y_pred),
+        "auc": roc_auc_score(y_true, y_prob),
+    }
+
+voting_results = {
+    "Hard Voting": compute_metrics(y_test, hard_preds, hard_preds.astype(float)),
+    "Soft Voting": compute_metrics(y_test, soft_preds, soft_probs),
+    "Weighted Avg": compute_metrics(y_test, weighted_preds, weighted_probs),
+}
+
+for name, m in voting_results.items():
+    print(f"  {name}: Acc={m['accuracy']:.4f}  AUC={m['auc']:.4f}  F1={m['f1']:.4f}")
+
+# =========================================================
+# SAVE METRICS
+# =========================================================
+metrics_path = os.path.join(output_dir, "stacking_metrics.txt")
+with open(metrics_path, "w") as f:
+    f.write("=" * 65 + "\n")
+    f.write("STACKING ENSEMBLE RESULTS\n")
+    f.write("=" * 65 + "\n\n")
+    f.write("Meta-learner trained on: VALIDATION set (OOF predictions)\n")
+    f.write("Evaluated on:           TEST set (held-out)\n")
+    f.write("Meta-features:          5 model probabilities\n\n")
+
+    f.write("-" * 65 + "\n")
+    f.write(f"{'Method':<22s} {'Acc':>7s} {'Prec':>7s} {'Recall':>7s} {'Spec':>7s} {'F1':>7s} {'AUC':>7s}\n")
+    f.write("-" * 65 + "\n")
+
+    all_results = {**voting_results, **results}
+    for name in ["Hard Voting", "Soft Voting", "Weighted Avg"] + sorted(results.keys()):
+        m = all_results[name]
+        f.write(f"{name:<22s} {m['accuracy']:7.4f} {m['precision']:7.4f} {m['recall']:7.4f} "
+                f"{m['specificity']:7.4f} {m['f1']:7.4f} {m['auc']:7.4f}\n")
+
+    f.write("-" * 65 + "\n")
+
+    best_acc = max(results, key=lambda k: results[k]["accuracy"])
+    best_auc = max(results, key=lambda k: results[k]["auc"])
+    f.write(f"\nBest Stacking Accuracy: {best_acc} ({results[best_acc]['accuracy']:.4f})\n")
+    f.write(f"Best Stacking AUC:      {best_auc} ({results[best_auc]['auc']:.4f})\n")
+
+    # Comparison with best voting method
+    best_voting_acc = max(voting_results, key=lambda k: voting_results[k]["accuracy"])
+    best_voting_auc = max(voting_results, key=lambda k: voting_results[k]["auc"])
+    acc_delta = results[best_acc]["accuracy"] - voting_results[best_voting_acc]["accuracy"]
+    auc_delta = results[best_auc]["auc"] - voting_results[best_voting_auc]["auc"]
+    f.write(f"\nDelta vs Best Voting ({best_voting_acc}):\n")
+    f.write(f"  Accuracy: {acc_delta:+.4f}\n")
+    f.write(f"  AUC:      {auc_delta:+.4f}\n")
+
+print(f"\n  Metrics saved to: {metrics_path}")
+
+# =========================================================
+# ROC COMPARISON PLOT
+# =========================================================
+print("\n" + "=" * 60)
+print("Generating ROC comparison plot...")
+print("=" * 60)
+
+plt.figure(figsize=(10, 8))
+
+colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+for idx, name in enumerate(model_order):
+    fpr, tpr, _ = roc_curve(y_test, test_probs[name])
+    auc_val = roc_auc_score(y_test, test_probs[name])
+    plt.plot(fpr, tpr, color=colors[idx], linewidth=1, alpha=0.5,
+             label=f'{name} (AUC={auc_val:.4f})')
+
+# Voting baselines
+voting_styles = [
+    ("Hard Voting", hard_preds.astype(float), 'black', '--', 2),
+    ("Soft Voting", soft_probs, 'gray', '-.', 2),
+    ("Weighted Avg", weighted_probs, 'brown', ':', 2),
+]
+for vname, prob, color, style, width in voting_styles:
+    fpr, tpr, _ = roc_curve(y_test, prob)
+    plt.plot(fpr, tpr, linestyle=style, linewidth=width, color=color, alpha=0.6,
+             label=f'{vname} (AUC={voting_results[vname]["auc"]:.4f})')
+
+# Best stacking
+stacking_styles = {'Stacking-GB': '#2ca02c'}
+for sname, color in stacking_styles.items():
+    if sname in results:
+        fpr, tpr, _ = roc_curve(y_test, results[sname]["probabilities"])
+        plt.plot(fpr, tpr, linewidth=2.5, linestyle='-', color=color, alpha=0.8,
+                 label=f'{sname} (AUC={results[sname]["auc"]:.4f})')
+
+plt.plot([0, 1], [0, 1], 'k--', linewidth=1, alpha=0.4)
+plt.xlabel('False Positive Rate', fontsize=12)
+plt.ylabel('True Positive Rate', fontsize=12)
+plt.title('ROC Curves: Stacking Ensemble vs Voting Baselines', fontsize=14)
+plt.legend(loc='lower right', fontsize=8)
+plt.grid(True, alpha=0.3)
+
+roc_path = os.path.join(output_dir, "stacking_roc_comparison.png")
+plt.savefig(roc_path, dpi=150, bbox_inches='tight')
+plt.close()
+print(f"  ROC plot saved to: {roc_path}")
+
+# =========================================================
+# GB FEATURE IMPORTANCE
+# =========================================================
+if "Stacking-GB" in results:
+    gb_clf = results["Stacking-GB"]["classifier"]
+    importances = gb_clf.feature_importances_
+
+    plt.figure(figsize=(8, 5))
+    bars = plt.bar(model_order, importances, color=colors)
+    plt.ylabel('Feature Importance', fontsize=12)
+    plt.title('Gradient Boosting Meta-Learner: Learned Model Weights', fontsize=14)
+    plt.xticks(rotation=30, ha='right')
+
+    for bar, imp in zip(bars, importances):
+        plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.005,
+                 f'{imp:.3f}', ha='center', fontsize=10)
+
+    plt.tight_layout()
+    fi_path = os.path.join(output_dir, "gb_model_importance.png")
+    plt.savefig(fi_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"  Feature importance plot saved to: {fi_path}")
+
+# =========================================================
+# FINAL SUMMARY
+# =========================================================
+print("\n" + "=" * 65)
+print("FINAL SUMMARY")
+print("=" * 65)
+print(f"{'Method':<22s} {'Acc':>7s} {'Prec':>7s} {'Recall':>7s} {'Spec':>7s} {'F1':>7s} {'AUC':>7s}")
+print("-" * 65)
+
+for name in ["Hard Voting", "Soft Voting", "Weighted Avg"] + sorted(results.keys()):
+    all_r = {**voting_results, **results}
+    m = all_r[name]
+    print(f"{name:<22s} {m['accuracy']:7.4f} {m['precision']:7.4f} {m['recall']:7.4f} "
+          f"{m['specificity']:7.4f} {m['f1']:7.4f} {m['auc']:7.4f}")
+
+print("-" * 65)
+print(f"\nAll results saved in: {output_dir}/")

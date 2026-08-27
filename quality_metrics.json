@@ -1,0 +1,42 @@
+
+Checking train/benign:
+benign1000.png -> PSNR: 34.89, SSIM: 0.9720, MSE: 21.07
+benign10002.png -> PSNR: 35.86, SSIM: 0.9790, MSE: 16.87
+benign10003.png -> PSNR: 38.40, SSIM: 0.9824, MSE: 9.40
+benign10004.png -> PSNR: 33.32, SSIM: 0.9634, MSE: 30.24
+benign10005.png -> PSNR: 38.05, SSIM: 0.9799, MSE: 10.18
+
+Checking train/malignant:
+malignant1.png -> PSNR: 40.10, SSIM: 0.9800, MSE: 6.36
+malignant10.png -> PSNR: 31.26, SSIM: 0.9611, MSE: 48.60
+malignant100.png -> PSNR: 39.57, SSIM: 0.9776, MSE: 7.18
+malignant1000.png -> PSNR: 33.52, SSIM: 0.9674, MSE: 28.89
+malignant10000.png -> PSNR: 30.85, SSIM: 0.9130, MSE: 53.50
+
+Checking val/benign:
+benign1.png -> PSNR: 38.89, SSIM: 0.9741, MSE: 8.39
+benign100.png -> PSNR: 37.94, SSIM: 0.9657, MSE: 10.44
+benign10018.png -> PSNR: 37.77, SSIM: 0.9798, MSE: 10.87
+benign10022.png -> PSNR: 33.36, SSIM: 0.9635, MSE: 30.01
+benign10031.png -> PSNR: 33.61, SSIM: 0.9639, MSE: 28.29
+
+Checking val/malignant:
+malignant10014.png -> PSNR: 34.56, SSIM: 0.9573, MSE: 22.76
+malignant10015.png -> PSNR: 26.45, SSIM: 0.9036, MSE: 147.27
+malignant10020.png -> PSNR: 30.46, SSIM: 0.9568, MSE: 58.47
+malignant10023.png -> PSNR: 34.91, SSIM: 0.9614, MSE: 20.98
+malignant10026.png -> PSNR: 31.28, SSIM: 0.9571, MSE: 48.37
+
+Checking test/benign:
+benign10.png -> PSNR: 31.78, SSIM: 0.9561, MSE: 43.17
+benign10000.png -> PSNR: 35.81, SSIM: 0.9788, MSE: 17.07
+benign10001.png -> PSNR: 31.63, SSIM: 0.9644, MSE: 44.71
+benign1001.png -> PSNR: 41.44, SSIM: 0.9849, MSE: 4.66
+benign10014.png -> PSNR: 38.07, SSIM: 0.9816, MSE: 10.14
+
+Checking test/malignant:
+malignant10005.png -> PSNR: 33.95, SSIM: 0.9602, MSE: 26.19
+malignant1002.png -> PSNR: 32.75, SSIM: 0.9632, MSE: 34.51
+malignant10029.png -> PSNR: 37.54, SSIM: 0.9734, MSE: 11.45
+malignant1003.png -> PSNR: 33.40, SSIM: 0.9676, MSE: 29.73
+malignant10034.png -> PSNR: 30.13, SSIM: 0.9133, MSE: 63.16

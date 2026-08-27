@@ -1,0 +1,7 @@
+Gradient Boosting Feature Importance
+==================================================
+
+EfficientNet         0.007788
+ResNet               0.006535
+VGG16                0.004283
+Late_Fusion          0.981394

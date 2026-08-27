@@ -1,0 +1,31 @@
+PSO-BASED CNN MODEL SELECTION
+======================================================================
+
+Candidate models:
+  - EfficientNet
+  - DenseNet
+  - ResNet
+  - VGG16
+  - Xception
+
+Selection objective:
+  Select exactly 3 of the 5 CNN models.
+
+Fitness function:
+  Fitness = (Accuracy + F1 + AUC) / 3
+
+Best PSO selection:
+  - EfficientNet
+  - ResNet
+  - VGG16
+
+Validation metrics:
+  Fitness:  0.989996
+  Accuracy: 0.985209
+  F1:       0.985676
+  AUC:      0.999104
+
+Exhaustive-search verification:
+  Best combination: EfficientNet, ResNet, VGG16
+  Best fitness: 0.989996
+  PSO matches exhaustive optimum: True
