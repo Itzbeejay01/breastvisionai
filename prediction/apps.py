@@ -6,9 +6,5 @@ class PredictionConfig(AppConfig):
     name = "prediction"
 
     def ready(self):
-        """
-        Load PSO-selected models and GB meta-learner into memory
-        at Django startup so they are cached for all predictions.
-        """
-        from prediction.services.model_registry import PSOModelRegistry
-        PSOModelRegistry.initialize()
+        """Keep Django startup lightweight; models load lazily on first use."""
+        return None
