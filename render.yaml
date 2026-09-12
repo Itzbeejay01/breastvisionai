@@ -15,8 +15,8 @@ services:
       - key: ALLOWED_HOSTS
         value: "*"
       - key: DJANGO_SUPERUSER_USERNAME
-        value: admin
+        value: breastvisionai
       - key: DJANGO_SUPERUSER_EMAIL
-        value: admin@example.com
+        value: admin@breastvisionai.com
       - key: DJANGO_SUPERUSER_PASSWORD
-        generateValue: true
+        value: Password123@
