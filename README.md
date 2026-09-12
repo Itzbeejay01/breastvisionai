@@ -28,9 +28,10 @@ and does not require Django or the React frontend.
 3. Select your repository and branch, set the main file to
    `streamlit_app.py`, and deploy. The root `requirements.txt` is installed
    automatically.
-4. In the deployment settings, choose Python 3.11 if available. This matches
-   the project’s tested Python range and avoids changing Python versions after
-   deployment.
+4. In **Advanced settings**, choose Python 3.11. TensorFlow 2.16.2 is pinned
+   in `requirements.txt` and requires a supported Python version; Python 3.14
+   cannot install it. Streamlit requires deleting and redeploying an app if
+   you need to change its Python version later.
 
 The first start can take several minutes because TensorFlow installs and the
 three Keras models are loaded. Subsequent visits reuse the cached models while
