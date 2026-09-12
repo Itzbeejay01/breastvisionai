@@ -25,7 +25,7 @@ from prediction.services.gradcam import generate_gradcam_for_image
 CLASS_NAMES = ["benign", "malignant"]
 
 
-def predict_single(image_source, image_type="raw"):
+def predict_single(image_source, image_type="raw", generate_heatmap=True):
     """
     Run the full PSO ensemble prediction on a single image.
 
@@ -89,19 +89,20 @@ def predict_single(image_source, image_type="raw"):
     pso_weights = registry.get_pso_weights()
     selected_pso_weights = {m: pso_weights.get(m, fusion_weights[m]) for m in selected_models}
 
-    # --- Step 8: Grad-CAM heatmap (using first model) ---
-    # Use EfficientNet for heatmap generation (it's the highest-weighted model)
+    # --- Step 8: Optional Grad-CAM heatmap (using first model) ---
+    # Grad-CAM is useful for explainability but significantly slower on CPU.
     heatmap_b64 = None
-    primary_model = selected_models[0]
-    primary_batch, _ = preprocessed[primary_model]
-    try:
-        heatmap_b64 = generate_gradcam_for_image(
-            primary_batch,
-            original_array,
-            primary_model,
-        )
-    except Exception as e:
-        heatmap_b64 = None
+    if generate_heatmap:
+        primary_model = selected_models[0]
+        primary_batch, _ = preprocessed[primary_model]
+        try:
+            heatmap_b64 = generate_gradcam_for_image(
+                primary_batch,
+                original_array,
+                primary_model,
+            )
+        except Exception:
+            heatmap_b64 = None
 
     return {
         "prediction": prediction,

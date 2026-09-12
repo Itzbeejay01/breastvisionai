@@ -14,6 +14,39 @@ An academically-structured and production-ready Django + TensorFlow/Keras projec
 
 ## Quickstart
 
+## Deploy the Streamlit app for free
+
+This repository includes a standalone Streamlit interface in
+[`streamlit_app.py`](streamlit_app.py). It reuses the existing trained models
+and does not require Django or the React frontend.
+
+1. Push this repository to a GitHub repository. Keep the `models/`,
+   `PSO_Result/`, and `Stacking_Result/` directories in the repository; the
+   Streamlit app needs them at runtime.
+2. Open [Streamlit Community Cloud](https://share.streamlit.io/), sign in with
+   GitHub, and choose **Create app**.
+3. Select your repository and branch, set the main file to
+   `streamlit_app.py`, and deploy. The root `requirements.txt` is installed
+   automatically.
+4. In the deployment settings, choose Python 3.11 if available. This matches
+   the project’s tested Python range and avoids changing Python versions after
+   deployment.
+
+The first start can take several minutes because TensorFlow installs and the
+three Keras models are loaded. Subsequent visits reuse the cached models while
+the app instance is running. Streamlit Community Cloud apps may sleep when
+unused, so a cold start is expected.
+
+Run the same app locally with:
+
+```bash
+streamlit run streamlit_app.py
+```
+
+The free deployment is suitable for demonstrations and research support. It
+is not a substitute for clinical diagnosis, and uploaded images should not be
+treated as permanently stored medical records.
+
 ### 1) Setup (first time only)
 
 ```bash

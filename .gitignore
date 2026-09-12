@@ -106,6 +106,12 @@ datasets/**/*.tmp
 datasets_split
 .commandcode/
 Archive.zip
+
+# Trained model artifacts are too large and should not be committed.
+# Host these externally and download them at deployment time instead.
+models/
+model_training/checkpoints/
+Stacking_Result/*.joblib
 # Node
 node_modules/
 results
