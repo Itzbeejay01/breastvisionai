@@ -85,11 +85,16 @@ pip install -r requirements.txt
 # Backend: apply migrations
 python manage.py migrate
 
-# Create the administrator account used to sign in to the React application
-python manage.py createsuperuser
+# Create/update the administrator account used to sign in to the React
+# application. The same script is run automatically by the container.
+export DJANGO_SUPERUSER_USERNAME=breastvisionai
+export DJANGO_SUPERUSER_EMAIL=admin@breastvisionai.com
+export DJANGO_SUPERUSER_PASSWORD='choose-a-password-at-least-8-characters'
+python3 scripts/create_superuser.py
 
-# The command prompts for username, email, and password. Use that account at
-# the React UI login screen.
+# Use those exact values at the React UI login screen. For local development,
+# these variables may instead be placed in the untracked .env file; Django
+# loads it automatically.
 
 # Frontend: install UI dependencies (run in a separate terminal, or after deactivating the venv)
 cd breastvisionai-ui

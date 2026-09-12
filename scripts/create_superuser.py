@@ -1,4 +1,8 @@
-"""Create/update the deployment administrator from environment variables."""
+"""Create/update the deployment administrator from environment variables.
+
+This script is intentionally idempotent: it can run on every container start
+and will repair the configured account if the database already exists.
+"""
 
 import os
 import sys
@@ -20,19 +24,33 @@ django.setup()
 from django.contrib.auth import get_user_model  # noqa: E402
 
 
-username = os.getenv("DJANGO_SUPERUSER_USERNAME")
-password = os.getenv("DJANGO_SUPERUSER_PASSWORD")
-email = os.getenv("DJANGO_SUPERUSER_EMAIL", "")
+username = os.getenv("DJANGO_SUPERUSER_USERNAME", "").strip()
+password = os.getenv("DJANGO_SUPERUSER_PASSWORD", "")
+email = os.getenv("DJANGO_SUPERUSER_EMAIL", "").strip()
 
-if username and password:
-    User = get_user_model()
-    user, _ = User.objects.get_or_create(username=username)
-    user.email = email
-    user.is_staff = True
-    user.is_superuser = True
-    user.is_active = True
-    user.set_password(password)
-    user.save()
-    print(f"Deployment administrator ready: {username}")
-else:
-    print("Deployment administrator variables are not set; skipping creation.")
+missing = [
+    name for name, value in (
+        ("DJANGO_SUPERUSER_USERNAME", username),
+        ("DJANGO_SUPERUSER_PASSWORD", password),
+    ) if not value
+]
+if missing:
+    raise RuntimeError(
+        "Cannot create the deployment administrator; missing environment "
+        f"variable(s): {', '.join(missing)}"
+    )
+
+User = get_user_model()
+user, created = User.objects.get_or_create(username=username)
+user.email = email
+user.is_staff = True
+user.is_superuser = True
+user.is_active = True
+user.set_password(password)
+user.save()
+
+if not user.check_password(password) or not user.is_staff or not user.is_active:
+    raise RuntimeError(f"Deployment administrator verification failed: {username}")
+
+action = "created" if created else "updated"
+print(f"Deployment administrator {action} and verified: {username}")
