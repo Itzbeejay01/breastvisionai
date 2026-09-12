@@ -48,6 +48,22 @@ The free deployment is suitable for demonstrations and research support. It
 is not a substitute for clinical diagnosis, and uploaded images should not be
 treated as permanently stored medical records.
 
+## Deploy the original React/Django platform on Render
+
+For the original interface, use the included `Dockerfile` and `render.yaml`,
+not `streamlit_app.py`. This deploys the React/Vite frontend, Django API, and
+TensorFlow models as one Render Web Service. Django serves the compiled React
+application from `breastvisionai-ui/dist`.
+
+In Render, choose **New → Blueprint**, connect this repository, and apply the
+`render.yaml` configuration. Render will build the Docker image, build the
+React frontend, run migrations, and start Django with Gunicorn.
+
+The free Render service is intended for demonstrations and may sleep after
+inactivity. SQLite storage is also ephemeral on free instances, so use a
+managed PostgreSQL database before relying on saved users, uploads, or
+prediction history.
+
 ### 1) Setup (first time only)
 
 ```bash
