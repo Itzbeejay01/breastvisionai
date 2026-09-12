@@ -14,3 +14,9 @@ services:
         value: "false"
       - key: ALLOWED_HOSTS
         value: "*"
+      - key: DJANGO_SUPERUSER_USERNAME
+        value: admin
+      - key: DJANGO_SUPERUSER_EMAIL
+        value: admin@example.com
+      - key: DJANGO_SUPERUSER_PASSWORD
+        generateValue: true

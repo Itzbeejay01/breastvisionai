@@ -59,6 +59,12 @@ In Render, choose **New → Blueprint**, connect this repository, and apply the
 `render.yaml` configuration. Render will build the Docker image, build the
 React frontend, run migrations, and start Django with Gunicorn.
 
+The deployment administrator is created from the `DJANGO_SUPERUSER_USERNAME`,
+`DJANGO_SUPERUSER_EMAIL`, and `DJANGO_SUPERUSER_PASSWORD` environment
+variables in `render.yaml`. Change these values in Render before using the
+application. The generated password is available in the service environment
+settings; it is not copied from the local `db.sqlite3`.
+
 The free Render service is intended for demonstrations and may sleep after
 inactivity. SQLite storage is also ephemeral on free instances, so use a
 managed PostgreSQL database before relying on saved users, uploads, or

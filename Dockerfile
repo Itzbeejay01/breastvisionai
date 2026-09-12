@@ -27,7 +27,9 @@ COPY . .
 RUN cd breastvisionai-ui && npm run build
 RUN python manage.py collectstatic --noinput
 RUN mkdir -p media
+# Do not bake the local development database into the production image.
+RUN rm -f db.sqlite3
 
 EXPOSE 10000
 
-CMD ["sh", "-c", "python manage.py migrate && python -m gunicorn breastvisionai.wsgi:application --bind 0.0.0.0:${PORT:-10000} --workers 1 --timeout 300"]
+CMD ["sh", "-c", "python manage.py migrate && python scripts/create_superuser.py && python -m gunicorn breastvisionai.wsgi:application --bind 0.0.0.0:${PORT:-10000} --workers 1 --timeout 300"]
