@@ -2,8 +2,7 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    NODE_ENV=production
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
@@ -21,7 +20,7 @@ COPY requirements.txt ./
 RUN python -m pip install --upgrade pip && pip install -r requirements.txt
 
 COPY breastvisionai-ui/package*.json ./breastvisionai-ui/
-RUN cd breastvisionai-ui && npm ci
+RUN cd breastvisionai-ui && npm ci --include=dev
 
 COPY . .
 
