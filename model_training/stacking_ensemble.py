@@ -34,6 +34,7 @@ IMPORTANT:
 
 import os
 import json
+import joblib
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -335,6 +336,26 @@ print(
 meta_learner.fit(
     X_val,
     y_val
+)
+
+
+# ============================================================
+# SAVE META-LEARNER
+# ============================================================
+
+gb_model_path = os.path.join(
+    OUTPUT_DIR,
+    "pso_stacked_gb_model.joblib"
+)
+
+joblib.dump(
+    meta_learner,
+    gb_model_path
+)
+
+print(
+    f"\nGradientBoosting meta-learner saved to:\n"
+    f"  {gb_model_path}"
 )
 
 

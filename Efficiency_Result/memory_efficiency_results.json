@@ -1,0 +1,44 @@
+{
+    "all_5_cnn": {
+        "models": [
+            "EfficientNet",
+            "DenseNet",
+            "ResNet",
+            "VGG16",
+            "Xception"
+        ],
+        "number_of_models": 5,
+        "number_of_test_images": 3992,
+        "memory_before_loading_mb": 1432.5390625,
+        "memory_after_loading_mb": 1948.29296875,
+        "memory_increase_from_loading_mb": 515.75390625,
+        "memory_after_inference_mb": 391.74609375,
+        "peak_ram_memory_mb": 2036.0625,
+        "total_inference_time_seconds": 2266.044023562,
+        "total_inference_time_minutes": 37.7674003927,
+        "average_inference_time_per_image_seconds": 0.5676462984874749,
+        "average_inference_time_per_image_ms": 567.646298487475
+    },
+    "pso_selected_3_cnn": {
+        "models": [
+            "EfficientNet",
+            "ResNet",
+            "VGG16"
+        ],
+        "number_of_models": 3,
+        "number_of_test_images": 3992,
+        "memory_before_loading_mb": 541.6015625,
+        "memory_after_loading_mb": 843.3671875,
+        "memory_increase_from_loading_mb": 301.765625,
+        "memory_after_inference_mb": 399.1796875,
+        "peak_ram_memory_mb": 894.98046875,
+        "total_inference_time_seconds": 1398.891544311,
+        "total_inference_time_minutes": 23.314859071849998,
+        "average_inference_time_per_image_seconds": 0.3504237335448397,
+        "average_inference_time_per_image_ms": 350.4237335448397
+    },
+    "efficiency_comparison": {
+        "inference_time_reduction_percent": 38.267238863608696,
+        "peak_memory_reduction_percent": 56.043566012831135
+    }
+}

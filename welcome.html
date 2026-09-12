@@ -1,0 +1,493 @@
+<!doctype html>
+
+<html class="light" lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>BreastVisionAI - Clinical Research Platform</title>
+    <!-- Fonts and Icons -->
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <!-- Tailwind Configuration (Design System) -->
+    <script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "outline-variant": "#bdc8cb",
+              "surface-variant": "#e1e3e4",
+              "inverse-primary": "#7ad4e5",
+              "surface-container-lowest": "#ffffff",
+              "on-tertiary-fixed": "#410005",
+              "on-error-container": "#93000a",
+              error: "#ba1a1a",
+              "on-secondary-container": "#007349",
+              "primary-container": "#007a8a",
+              "on-surface-variant": "#3e494b",
+              "on-primary-fixed": "#001f25",
+              surface: "#f8fafb",
+              "secondary-fixed": "#8df8bd",
+              "on-primary-fixed-variant": "#004e59",
+              "surface-container": "#eceeef",
+              "on-secondary": "#ffffff",
+              secondary: "#006c44",
+              "on-surface": "#191c1d",
+              "tertiary-fixed": "#ffdad7",
+              "surface-container-highest": "#e1e3e4",
+              primary: "#005f6c",
+              "tertiary-fixed-dim": "#ffb3ae",
+              background: "#f8fafb",
+              "surface-container-high": "#e6e8e9",
+              "on-secondary-fixed": "#002112",
+              "on-tertiary-fixed-variant": "#8f0d19",
+              "on-tertiary-container": "#ffefee",
+              "tertiary-container": "#c83b3c",
+              "on-background": "#191c1d",
+              outline: "#6e797b",
+              "surface-container-low": "#f2f4f5",
+              "secondary-fixed-dim": "#71dba2",
+              "error-container": "#ffdad6",
+              "inverse-surface": "#2e3132",
+              "surface-tint": "#006876",
+              "on-secondary-fixed-variant": "#005232",
+              "primary-fixed-dim": "#7ad4e5",
+              "on-error": "#ffffff",
+              "inverse-on-surface": "#eff1f2",
+              "surface-bright": "#f8fafb",
+              "on-primary-container": "#daf8ff",
+              "surface-dim": "#d8dadb",
+              "on-primary": "#ffffff",
+              "on-tertiary": "#ffffff",
+              "secondary-container": "#8df8bd",
+              tertiary: "#a62127",
+              "primary-fixed": "#a0efff",
+            },
+            borderRadius: {
+              DEFAULT: "0.25rem",
+              lg: "0.5rem",
+              xl: "0.75rem",
+              full: "9999px",
+            },
+            spacing: {
+              unit: "8px",
+              gutter: "24px",
+              "margin-desktop": "40px",
+              "container-max": "1440px",
+              "margin-mobile": "16px",
+            },
+            fontFamily: {
+              "headline-lg": ["Inter"],
+              "headline-sm": ["Inter"],
+              "headline-md": ["Inter"],
+              "body-sm": ["Inter"],
+              "body-lg": ["Inter"],
+              "label-caps": ["Inter"],
+              "body-md": ["Inter"],
+              "display-lg": ["Inter"],
+              "data-num": ["Inter"],
+            },
+            fontSize: {
+              "headline-lg": [
+                "32px",
+                {
+                  lineHeight: "40px",
+                  letterSpacing: "-0.01em",
+                  fontWeight: "600",
+                },
+              ],
+              "headline-sm": [
+                "20px",
+                { lineHeight: "28px", fontWeight: "600" },
+              ],
+              "headline-md": [
+                "24px",
+                { lineHeight: "32px", fontWeight: "600" },
+              ],
+              "body-sm": ["14px", { lineHeight: "20px", fontWeight: "400" }],
+              "body-lg": ["18px", { lineHeight: "28px", fontWeight: "400" }],
+              "label-caps": [
+                "12px",
+                {
+                  lineHeight: "16px",
+                  letterSpacing: "0.05em",
+                  fontWeight: "700",
+                },
+              ],
+              "body-md": ["16px", { lineHeight: "24px", fontWeight: "400" }],
+              "display-lg": [
+                "48px",
+                {
+                  lineHeight: "56px",
+                  letterSpacing: "-0.02em",
+                  fontWeight: "700",
+                },
+              ],
+              "data-num": ["16px", { lineHeight: "24px", fontWeight: "500" }],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      /* Base styles */
+      body {
+        background-color: theme("colors.background");
+        color: theme("colors.on-background");
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* Material Icons */
+      .material-symbols-outlined {
+        font-family: "Material Symbols Outlined";
+        font-weight: normal;
+        font-style: normal;
+        font-size: 24px;
+        line-height: 1;
+        letter-spacing: normal;
+        text-transform: none;
+        display: inline-block;
+        white-space: nowrap;
+        word-wrap: normal;
+        direction: ltr;
+        -webkit-font-feature-settings: "liga";
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* Soft Shadows */
+      .shadow-ambient {
+        box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05);
+      }
+
+      /* Glassmorphism */
+      .glass-panel {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.5);
+      }
+
+      /* Spring Animation Utilities */
+      .spring-transition {
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      }
+    </style>
+  </head>
+  <body
+    class="min-h-screen flex flex-col font-body-md text-body-md relative overflow-x-hidden"
+  >
+    <!-- TopAppBar (Landing Page Variant - Suppressing internal navigation) -->
+    <header
+      class="bg-surface dark:bg-surface-dim border-b border-outline-variant dark:border-outline fixed top-0 left-0 w-full z-50 flex justify-between items-center px-margin-desktop max-w-container-max mx-auto h-16"
+    >
+      <div
+        class="flex items-center gap-2 text-headline-md font-headline-md font-bold text-primary dark:text-primary-fixed"
+      >
+        <span
+          class="material-symbols-outlined"
+          data-weight="fill"
+          style="font-variation-settings: &quot;FILL&quot; 1"
+          >medical_services</span
+        >
+        BreastVisionAI
+      </div>
+      <!-- Action Buttons instead of Navigation for Landing Page -->
+      <div class="flex items-center gap-4">
+        <a
+          class="font-label-caps text-label-caps text-primary hover:text-primary-fixed-dim transition-colors duration-200"
+          href="#"
+          >LOGIN</a
+        >
+        <a
+          class="bg-primary text-on-primary font-label-caps text-label-caps px-4 py-2 rounded-full hover:bg-primary-fixed-dim transition-colors duration-200 spring-transition hover:scale-105"
+          href="#"
+          >REQUEST ACCESS</a
+        >
+      </div>
+    </header>
+    <!-- Main Content Canvas -->
+    <main
+      class="flex-grow pt-24 pb-16 px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto w-full relative z-10"
+    >
+      <!-- Hero Section -->
+      <section
+        class="flex flex-col items-center text-center mt-12 mb-24 max-w-4xl mx-auto relative"
+      >
+        <!-- Trust Badge -->
+        <div
+          class="inline-flex items-center gap-2 bg-surface-container-low border border-outline-variant rounded-full px-4 py-1.5 mb-8 shadow-sm"
+        >
+          <span
+            class="material-symbols-outlined text-secondary"
+            style="font-size: 16px"
+            >verified_user</span
+          >
+          <span class="font-label-caps text-label-caps text-on-surface-variant"
+            >CLINICAL-GRADE PRECISION &amp; DICOM SECURE</span
+          >
+        </div>
+        <!-- Headline -->
+        <h1 class="font-display-lg text-display-lg text-on-background mb-6">
+          Advanced Breast Cancer Detection for Clinical Research
+        </h1>
+        <!-- Subtext -->
+        <p
+          class="font-body-lg text-body-lg text-on-surface-variant max-w-2xl mb-10"
+        >
+          Leveraging a PSO-optimized ensemble model (EfficientNet, ResNet,
+          VGG16) to deliver high-confidence triage with Grad-CAM explainability.
+          Built for radiologists, designed for clarity.
+        </p>
+        <!-- Actions -->
+        <div
+          class="flex flex-col sm:flex-row gap-4 justify-center w-full max-w-md"
+        >
+          <button
+            class="bg-primary text-on-primary font-body-md text-body-md font-semibold px-8 py-3 rounded-lg hover:bg-surface-tint transition-all duration-200 shadow-md spring-transition hover:-translate-y-1 w-full sm:w-auto"
+          >
+            Access Platform
+          </button>
+          <button
+            class="bg-surface-container-lowest text-primary border border-outline-variant font-body-md text-body-md font-semibold px-8 py-3 rounded-lg hover:bg-surface-container-low transition-all duration-200 shadow-sm w-full sm:w-auto flex items-center justify-center gap-2"
+          >
+            <span class="material-symbols-outlined">menu_book</span>
+            View Documentation
+          </button>
+        </div>
+        <!-- Abstract Medical Graphic -->
+        <div
+          class="mt-16 w-full max-w-5xl rounded-xl overflow-hidden shadow-ambient bg-surface-container-lowest border border-outline-variant relative"
+        >
+          <div
+            class="aspect-[21/9] w-full bg-surface-container-low relative flex items-center justify-center overflow-hidden"
+          >
+            <div
+              class="absolute inset-0 bg-cover bg-center opacity-80 mix-blend-multiply"
+              data-alt="A highly detailed, modern, abstract medical illustration of a neural network analyzing a mammogram scan. The style is clinical, professional, and advanced, utilizing a clean, light-mode aesthetic with a palette of soft teal, pristine white, and subtle deep greys. Fine glowing connection lines represent the PSO-optimized ensemble model at work, conveying precision and technological sophistication in a healthcare setting."
+              style="
+                background-image: url(&quot;https://lh3.googleusercontent.com/aida-public/AB6AXuAXa_LAw7esqIxw2mrZj-TzPrf62JSa_v-nsRFFgMjLNxTqeIav8dWmN-uVd90J_T_F2JyjQ938HRA4YaKFwF7GhJhmZE-cH3cmV5mqZN7jE_mQsvM4c3Nb1A8fPtkeTWRdLlzUKBvYfagbjQbon1sCA5tbWk5kWn6hQX4peSOA9U8eDeL0YaHWjVJNx608gC78M4OE0ZHjA3lG0W-6-pfZgeGldOGxA_yzCOoEuoCbIM4EYbkqJte57Q&quot;);
+              "
+            ></div>
+            <div
+              class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest to-transparent opacity-60"
+            ></div>
+          </div>
+        </div>
+      </section>
+      <!-- Feature Highlights (Bento Grid Style) -->
+      <section class="mb-24">
+        <h2
+          class="font-headline-lg text-headline-lg text-on-background text-center mb-12"
+        >
+          Core Capabilities
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-gutter">
+          <!-- Card 1 -->
+          <div
+            class="bg-surface-container-lowest rounded-xl p-6 shadow-ambient border border-outline-variant flex flex-col spring-transition hover:-translate-y-1 hover:shadow-lg"
+          >
+            <div
+              class="w-12 h-12 bg-primary-container rounded-lg flex items-center justify-center mb-6 text-on-primary-container"
+            >
+              <span class="material-symbols-outlined">account_tree</span>
+            </div>
+            <h3 class="font-headline-sm text-headline-sm text-on-surface mb-3">
+              Multi-Model Ensemble
+            </h3>
+            <p
+              class="font-body-md text-body-md text-on-surface-variant flex-grow"
+            >
+              Combines EfficientNet, ResNet, and VGG16 architectures, optimized
+              via Particle Swarm Optimization for robust, cross-validated
+              diagnostic confidence.
+            </p>
+          </div>
+          <!-- Card 2 -->
+          <div
+            class="bg-surface-container-lowest rounded-xl p-6 shadow-ambient border border-outline-variant flex flex-col spring-transition hover:-translate-y-1 hover:shadow-lg"
+          >
+            <div
+              class="w-12 h-12 bg-secondary-container rounded-lg flex items-center justify-center mb-6 text-on-secondary-container"
+            >
+              <span class="material-symbols-outlined">visibility</span>
+            </div>
+            <h3 class="font-headline-sm text-headline-sm text-on-surface mb-3">
+              Explainable AI
+            </h3>
+            <p
+              class="font-body-md text-body-md text-on-surface-variant flex-grow"
+            >
+              Transparent decision-making through dynamic Grad-CAM heatmaps.
+              Instantly visualize the regions of interest driving the model's
+              verdict for clinical validation.
+            </p>
+          </div>
+          <!-- Card 3 -->
+          <div
+            class="bg-surface-container-lowest rounded-xl p-6 shadow-ambient border border-outline-variant flex flex-col spring-transition hover:-translate-y-1 hover:shadow-lg"
+          >
+            <div
+              class="w-12 h-12 bg-tertiary-container rounded-lg flex items-center justify-center mb-6 text-on-tertiary-container"
+            >
+              <span class="material-symbols-outlined">dynamic_feed</span>
+            </div>
+            <h3 class="font-headline-sm text-headline-sm text-on-surface mb-3">
+              Batch Processing
+            </h3>
+            <p
+              class="font-body-md text-body-md text-on-surface-variant flex-grow"
+            >
+              Designed for high-volume clinical workflows. Upload and triage
+              multiple DICOM studies simultaneously to streamline radiological
+              review queues.
+            </p>
+          </div>
+        </div>
+      </section>
+      <section class="py-24 mb-24">
+        <div class="text-center mb-16">
+          <h2 class="font-headline-md text-headline-md text-on-background mb-4">
+            How it Works
+          </h2>
+          <p
+            class="font-body-md text-body-md text-on-surface-variant max-w-2xl mx-auto"
+          >
+            A seamless 4-step workflow from raw DICOM to explainable diagnosis.
+          </p>
+        </div>
+        <div class="relative">
+          <div
+            class="hidden md:block absolute top-1/2 left-0 w-full h-0.5 bg-outline-variant -translate-y-1/2 z-0 opacity-30"
+          ></div>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-gutter relative z-10">
+            <div
+              class="bg-surface-container-lowest rounded-xl p-6 border border-outline-variant flex flex-col items-center text-center shadow-sm"
+            >
+              <div
+                class="w-12 h-12 bg-primary-container rounded-full flex items-center justify-center mb-4 text-on-primary-container"
+              >
+                <span class="material-symbols-outlined">cloud_upload</span>
+              </div>
+              <h3
+                class="font-headline-sm text-headline-sm text-on-surface mb-2"
+              >
+                Secure Upload
+              </h3>
+              <p class="font-body-sm text-body-sm text-on-surface-variant">
+                Drag and drop raw or pre-processed DICOM, PNG, or JPEG images.
+              </p>
+            </div>
+            <div
+              class="bg-surface-container-lowest rounded-xl p-6 border border-outline-variant flex flex-col items-center text-center shadow-sm"
+            >
+              <div
+                class="w-12 h-12 bg-primary-container rounded-full flex items-center justify-center mb-4 text-on-primary-container"
+              >
+                <span class="material-symbols-outlined">biotech</span>
+              </div>
+              <h3
+                class="font-headline-sm text-headline-sm text-on-surface mb-2"
+              >
+                Ensemble Analysis
+              </h3>
+              <p class="font-body-sm text-body-sm text-on-surface-variant">
+                A 3-model PSO-optimized ensemble evaluates the scan in parallel.
+              </p>
+            </div>
+            <div
+              class="bg-surface-container-lowest rounded-xl p-6 border border-outline-variant flex flex-col items-center text-center shadow-sm"
+            >
+              <div
+                class="w-12 h-12 bg-primary-container rounded-full flex items-center justify-center mb-4 text-on-primary-container"
+              >
+                <span class="material-symbols-outlined"
+                  >assignment_turned_in</span
+                >
+              </div>
+              <h3
+                class="font-headline-sm text-headline-sm text-on-surface mb-2"
+              >
+                Clinical Verdict
+              </h3>
+              <p class="font-body-sm text-body-sm text-on-surface-variant">
+                Receive a high-confidence malignancy probability backed by late
+                fusion.
+              </p>
+            </div>
+            <div
+              class="bg-surface-container-lowest rounded-xl p-6 border border-outline-variant flex flex-col items-center text-center shadow-sm"
+            >
+              <div
+                class="w-12 h-12 bg-primary-container rounded-full flex items-center justify-center mb-4 text-on-primary-container"
+              >
+                <span class="material-symbols-outlined">visibility</span>
+              </div>
+              <h3
+                class="font-headline-sm text-headline-sm text-on-surface mb-2"
+              >
+                Explainable AI
+              </h3>
+              <p class="font-body-sm text-body-sm text-on-surface-variant">
+                Visualize diagnostic hotspots with toggleable Grad-CAM heatmaps.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+    <!-- Footer -->
+    <footer
+      class="bg-surface-container-low dark:bg-surface-container-lowest border-t border-outline-variant dark:border-outline w-full py-8 px-margin-desktop flex flex-col md:flex-row justify-between items-center gap-4 mt-auto"
+    >
+      <div
+        class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2"
+      >
+        <span class="material-symbols-outlined" style="font-size: 20px"
+          >medical_services</span
+        >
+        BreastVisionAI
+      </div>
+      <p
+        class="font-body-sm text-body-sm text-secondary dark:text-secondary-fixed text-center md:text-left"
+      >
+        © 2024 BreastVisionAI Clinical Research Platform. All medical data
+        encrypted.
+      </p>
+      <div class="flex gap-4">
+        <a
+          class="font-label-caps text-label-caps text-on-surface-variant dark:text-surface-variant hover:text-primary dark:hover:text-primary-fixed transition-colors duration-200"
+          href="#"
+          >Privacy Policy</a
+        >
+        <a
+          class="font-label-caps text-label-caps text-on-surface-variant dark:text-surface-variant hover:text-primary dark:hover:text-primary-fixed transition-colors duration-200"
+          href="#"
+          >Terms of Service</a
+        >
+        <a
+          class="font-label-caps text-label-caps text-on-surface-variant dark:text-surface-variant hover:text-primary dark:hover:text-primary-fixed transition-colors duration-200"
+          href="#"
+          >Documentation</a
+        >
+        <a
+          class="font-label-caps text-label-caps text-on-surface-variant dark:text-surface-variant hover:text-primary dark:hover:text-primary-fixed transition-colors duration-200"
+          href="#"
+          >Support</a
+        >
+      </div>
+    </footer>
+  </body>
+</html>

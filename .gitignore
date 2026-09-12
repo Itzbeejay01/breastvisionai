@@ -109,3 +109,4 @@ Archive.zip
 # Node
 node_modules/
 results
+model_training/checkpoints/
