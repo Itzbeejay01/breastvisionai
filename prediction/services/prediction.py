@@ -15,6 +15,7 @@ Pipeline:
 """
 
 import os
+import logging
 import numpy as np
 import tensorflow as tf
 
@@ -23,6 +24,15 @@ from prediction.services.preprocessing import preprocess_image_for_all_models
 from prediction.services.gradcam import generate_gradcam_for_image
 
 CLASS_NAMES = ["benign", "malignant"]
+logger = logging.getLogger(__name__)
+
+
+def _predict_model(model, batched):
+    """Predict using the model's named input to avoid Keras structure warnings."""
+    if len(model.inputs) == 1:
+        input_name = model.inputs[0].name.split(":", 1)[0]
+        return model.predict({input_name: batched}, verbose=0)
+    return model.predict(batched, verbose=0)
 
 
 def predict_single(image_source, image_type="raw", generate_heatmap=True):
@@ -57,7 +67,7 @@ def predict_single(image_source, image_type="raw", generate_heatmap=True):
         batched, original_array = preprocessed[model_name]
         model = models[model_name]
 
-        prob = float(model.predict(batched, verbose=0).flatten()[0])
+        prob = float(_predict_model(model, batched).flatten()[0])
         model_probs[model_name] = prob
 
     # --- Step 3: Late fusion (equal-weight average) ---
@@ -91,7 +101,7 @@ def predict_single(image_source, image_type="raw", generate_heatmap=True):
 
     # --- Step 8: Optional Grad-CAM heatmap (using first model) ---
     # Grad-CAM is useful for explainability but significantly slower on CPU.
-    heatmap_b64 = None
+    heatmap_b64 = ""
     if generate_heatmap:
         primary_model = selected_models[0]
         primary_batch, _ = preprocessed[primary_model]
@@ -102,7 +112,10 @@ def predict_single(image_source, image_type="raw", generate_heatmap=True):
                 primary_model,
             )
         except Exception:
-            heatmap_b64 = None
+            # A prediction remains useful when Grad-CAM is unavailable for a
+            # particular saved model. Keep the API/database contract valid and
+            # retain the exception in the container logs for diagnosis.
+            logger.exception("Grad-CAM generation failed for model %s", primary_model)
 
     return {
         "prediction": prediction,

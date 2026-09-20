@@ -88,7 +88,14 @@ def make_gradcam_heatmap(image, grad_model):
     Generate Grad-CAM heatmap from a preprocessed image batch.
     """
     with tf.GradientTape() as tape:
-        conv_outputs, predictions = grad_model(image)
+        if len(grad_model.inputs) == 1:
+            input_name = grad_model.inputs[0].name.split(":", 1)[0]
+            conv_outputs, predictions = grad_model(
+                {input_name: image},
+                training=False,
+            )
+        else:
+            conv_outputs, predictions = grad_model(image, training=False)
 
         if predictions.shape[-1] == 1:
             class_channel = predictions[:, 0]

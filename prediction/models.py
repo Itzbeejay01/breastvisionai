@@ -50,7 +50,7 @@ class Prediction(models.Model):
     pso_weights = models.JSONField()
     fusion_weights = models.JSONField(blank=True, default=dict)
     ensemble_method = models.CharField(max_length=100, blank=True)
-    heatmap_base64 = models.TextField(blank=True)
+    heatmap_base64 = models.TextField(blank=True, default="")
     image_type = models.CharField(max_length=20, default="raw")
     timestamp = models.DateTimeField(auto_now_add=True)
 

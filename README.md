@@ -1,224 +1,129 @@
 # BreastVisionAI
 
-An academically-structured and production-ready Django + TensorFlow/Keras project for breast imaging research and deployment.
+BreastVisionAI is a Django + React application for breast-imaging research. It runs as one Docker container and serves the compiled React interface, Django API, SQLite database, uploaded media, and TensorFlow prediction models.
 
-## Features
-- Django backend with Django REST Framework, CORS, and WhiteNoise
-- TensorFlow (Keras included), scikit-learn, and medical imaging stack (SimpleITK, NiBabel, OpenCV)
-- Organized datasets, models, results, adversarial experiments, and modular `src` code
-- GPU auto-detection via TensorFlow with graceful CPU fallback
+## Stop the application
 
-## Prerequisites
-- Python 3.10 or 3.11 recommended
-- macOS or Linux. For CUDA GPU, ensure NVIDIA drivers + CUDA/cuDNN compatible with your TensorFlow version
-
-## Quickstart
-
-## Deploy the Streamlit app for free
-
-This repository includes a standalone Streamlit interface in
-[`streamlit_app.py`](streamlit_app.py). It reuses the existing trained models
-and does not require Django or the React frontend.
-
-1. Push this repository to a GitHub repository. Keep the `models/`,
-   `PSO_Result/`, and `Stacking_Result/` directories in the repository; the
-   Streamlit app needs them at runtime.
-2. Open [Streamlit Community Cloud](https://share.streamlit.io/), sign in with
-   GitHub, and choose **Create app**.
-3. Select your repository and branch, set the main file to
-   `streamlit_app.py`, and deploy. The root `requirements.txt` is installed
-   automatically.
-4. In **Advanced settings**, choose Python 3.11. TensorFlow 2.16.2 is pinned
-   in `requirements.txt` and requires a supported Python version; Python 3.14
-   cannot install it. Streamlit requires deleting and redeploying an app if
-   you need to change its Python version later.
-
-The first start can take several minutes because TensorFlow installs and the
-three Keras models are loaded. Subsequent visits reuse the cached models while
-the app instance is running. Streamlit Community Cloud apps may sleep when
-unused, so a cold start is expected.
-
-Run the same app locally with:
+If the container is running:
 
 ```bash
-streamlit run streamlit_app.py
+docker stop breastvisionai
 ```
 
-The free deployment is suitable for demonstrations and research support. It
-is not a substitute for clinical diagnosis, and uploaded images should not be
-treated as permanently stored medical records.
-
-## Deploy the original React/Django platform on Render
-
-For the original interface, use the included `Dockerfile` and `render.yaml`,
-not `streamlit_app.py`. This deploys the React/Vite frontend, Django API, and
-TensorFlow models as one Render Web Service. Django serves the compiled React
-application from `breastvisionai-ui/dist`.
-
-In Render, choose **New → Blueprint**, connect this repository, and apply the
-`render.yaml` configuration. Render will build the Docker image, build the
-React frontend, run migrations, and start Django with Gunicorn.
-
-The deployment administrator is created from the `DJANGO_SUPERUSER_USERNAME`,
-`DJANGO_SUPERUSER_EMAIL`, and `DJANGO_SUPERUSER_PASSWORD` environment
-variables in `render.yaml`. Change these values in Render before using the
-application. The generated password is available in the service environment
-settings; it is not copied from the local `db.sqlite3`.
-
-The free Render service is intended for demonstrations and may sleep after
-inactivity. SQLite storage is also ephemeral on free instances, so use a
-managed PostgreSQL database before relying on saved users, uploads, or
-prediction history.
-
-### 1) Setup (first time only)
+To remove the stopped container as well:
 
 ```bash
-# From project root
-cd /Applications/MAMP/htdocs/BreastVisionAI
-
-# Backend: create and activate a virtual environment, install dependencies
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip setuptools wheel
-pip install -r requirements.txt
-
-# Backend: apply migrations
-python manage.py migrate
-
-# Create/update the administrator account used to sign in to the React
-# application. The same script is run automatically by the container.
-export DJANGO_SUPERUSER_USERNAME=breastvisionai
-export DJANGO_SUPERUSER_EMAIL=admin@breastvisionai.com
-export DJANGO_SUPERUSER_PASSWORD='choose-a-password-at-least-8-characters'
-python3 scripts/create_superuser.py
-
-# Use those exact values at the React UI login screen. For local development,
-# these variables may instead be placed in the untracked .env file; Django
-# loads it automatically.
-
-# Frontend: install UI dependencies (run in a separate terminal, or after deactivating the venv)
-cd breastvisionai-ui
-npm install
-cd ..
+docker rm breastvisionai
 ```
 
-> **Note:** `npm install` skips dev dependencies when `NODE_ENV=production` is set in
-> your shell. If the UI build fails with "vite: not found", run
-> `NODE_ENV=development npm install`.
-
-### Large model and NumPy files (Git LFS)
-
-The trained Keras/weights files and `.npy` artifacts are configured for Git
-Large File Storage (LFS). GitHub blocks regular Git files larger than 100 MiB
-and recommends LFS for binary files. Install and initialize it before staging
-these files:
+The named `breastvisionai-data` and `breastvisionai-media` volumes are not removed by those commands. Remove them only when you intentionally want to erase the database, users, prediction history, and uploads:
 
 ```bash
-# macOS with Homebrew
-brew install git-lfs
-git lfs install
-
-# Confirm the configured files are handled by LFS
-git check-attr filter -- models/*.keras model_training/checkpoints/*.h5 results/*.npy
-
-# Stage and upload new files normally
-git add .gitattributes models model_training/checkpoints results pso_cache Stacking_Result
-git commit -m "Store model artifacts with Git LFS"
-git push origin main
+docker volume rm breastvisionai-data breastvisionai-media
 ```
 
-If this repository has already been pushed and the model files are present in
-regular Git history, migrate those existing files once before pushing the new
-history:
+## Requirements
+
+- Docker Desktop (Windows, macOS, or Linux)
+- At least 6 GB of free memory recommended for TensorFlow and the model files
+
+No local Python, Django, Node.js, npm, or virtual environment installation is required.
+
+## Build the image
+
+From the repository root:
 
 ```bash
-git lfs migrate import --include="*.keras,*.h5,*.npy,*.npz,*.joblib,*.pkl"
-git push --force-with-lease origin main
-git lfs push --all origin
+docker build -t breastvisionai .
 ```
 
-The migration rewrites commit history, so coordinate it with anyone else who
-has cloned the repository. GitHub Free currently includes 10 GiB of LFS
-storage and 10 GiB of monthly LFS bandwidth; additional usage may require a
-paid data pack or plan.
+The build installs Python and frontend dependencies, compiles the React UI, collects static files, and validates all five Keras model files plus the GradientBoosting meta-learner. The build can take several minutes.
 
-### 2) Run backend and frontend together (one command)
+## Start the container
 
-From the project root:
+The first start runs Django migrations, creates or updates the administrator, validates the three PSO-selected models used by predictions, and then starts Gunicorn. Model loading can take a few minutes on CPU.
+
+### PowerShell
+
+```powershell
+docker run --name breastvisionai `
+  -p 10000:10000 `
+  -v breastvisionai-data:/app/data `
+  -v breastvisionai-media:/app/media `
+  -e DJANGO_SECRET_KEY="secret-key-123@" `
+  -e DJANGO_DEBUG="true" `
+  -e ALLOWED_HOSTS="localhost,127.0.0.1" `
+  -e DJANGO_SUPERUSER_USERNAME="Olumide A.T." `
+  -e DJANGO_SUPERUSER_EMAIL="admin@breastvisionai.com" `
+  -e DJANGO_SUPERUSER_PASSWORD="Password123@" `
+  breastvisionai
+```
+
+### macOS/Linux shell
 
 ```bash
-./dev.sh
+docker run --name breastvisionai \
+  -p 10000:10000 \
+  -v breastvisionai-data:/app/data \
+  -v breastvisionai-media:/app/media \
+  -e DJANGO_SECRET_KEY='secret-key-123@' \
+  -e DJANGO_DEBUG='true' \
+  -e ALLOWED_HOSTS='localhost,127.0.0.1' \
+  -e DJANGO_SUPERUSER_USERNAME='Olumide A.T.' \
+  -e DJANGO_SUPERUSER_EMAIL='admin@breastvisionai.com' \
+  -e DJANGO_SUPERUSER_PASSWORD='Password123@' \
+  breastvisionai
 ```
 
-This starts:
+Open <http://localhost:10000/> after the startup messages show that Gunicorn has started. Sign in with the administrator values supplied to `docker run`.
 
-- Django API at http://localhost:8000/
-- Vite dev server at http://localhost:3000/ (proxies `/api` and `/media` to the backend)
+## Check status and logs
 
-Open http://localhost:8000/ or http://localhost:3000/ for the React landing
-page, then "Access Platform" to sign in with the administrator account and
-reach the dashboard (http://localhost:8000/dashboard). Authentication is
-required before any image is uploaded or processed. Port 8000 serves the
-compiled React UI through Django; port 3000 is the Vite development UI with
-hot reload. Django remains behind the scenes for secure session authentication
-and data services.
-
-Press `Ctrl+C` to stop both.
-
-### 3) Or run them separately
-
-**Backend only:**
+In another terminal:
 
 ```bash
-cd /Applications/MAMP/htdocs/BreastVisionAI
-source .venv/bin/activate
-python manage.py runserver 0.0.0.0:8000
+docker ps
+docker logs -f breastvisionai
+curl http://localhost:10000/api/health/
 ```
 
-**Frontend only:**
+The health response should be `{"status":"ok"}`. A successful startup log includes messages for migrations, administrator verification, model artifact validation, and Gunicorn.
+
+If the container exits, inspect the complete startup error:
 
 ```bash
-cd breastvisionai-ui
-NODE_ENV=development npm run dev
+docker logs breastvisionai
 ```
 
-### 4) Verify TensorFlow device detection
+Common causes are insufficient Docker memory, a missing model artifact in the build context, or missing `DJANGO_SUPERUSER_USERNAME`/`DJANGO_SUPERUSER_PASSWORD` values.
+
+## Restart and update
+
+Restart an existing container without rebuilding:
 
 ```bash
-python main.py
+docker restart breastvisionai
 ```
 
-## Project Structure
-```
-BreastVisionAI/
-├── adversarial/
-│   └── PGD/
-├── datasets/
-│   ├── INBreast/
-│   ├── CBIS-DDSM/
-│   └── MRI/
-├── models/
-│   ├── VGG16/
-│   ├── ResNet50/
-│   ├── EfficientNet/
-│   ├── DenseNet/
-│   └── Inception/
-├── results/
-│   ├── metrics/
-│   ├── confusion_matrices/
-│   ├── roc_curves/
-│   └── logs/
-├── src/
-│   ├── preprocessing/
-│   ├── training/
-│   ├── evaluation/
-│   └── ensemble/
-├── main.py
-├── requirements.txt
-├── .gitignore
-└── README.md
+After changing source code or model files, rebuild and replace the container:
+
+```bash
+docker build -t breastvisionai .
+docker stop breastvisionai
+docker rm breastvisionai
 ```
 
-## Notes
-- TensorFlow automatically uses available GPUs. If none are found, it falls back to CPU without error. See `main.py`.
-- For production, use `WhiteNoise` for static files and a WSGI server (e.g., gunicorn or uwsgi) behind a reverse proxy. Environment variables are loaded via `python-dotenv`.
+Then run the start command again. The named volumes preserve the SQLite database and uploaded media across container replacement.
+
+## Model behavior
+
+The image contains five Keras models: EfficientNet, DenseNet, ResNet, VGG16, and Xception. The configured PSO ensemble uses EfficientNet, ResNet, and VGG16 for predictions. Docker validates all five during the image build and validates the selected three plus the persisted GradientBoosting meta-learner at each container start.
+
+The meta-learner is serialized with scikit-learn 1.6.1, so that version is pinned in `requirements.txt`. Changing it may make the `.joblib` artifact unreadable.
+
+## Data and security
+
+- SQLite and uploads are persisted in the named Docker volumes shown above.
+- Replace the example secret key and administrator password before exposing the service outside a local machine.
+- `DJANGO_DEBUG=true` is useful for local troubleshooting but should be `false` for deployment.
+- This is a research tool and is not a substitute for clinical diagnosis.

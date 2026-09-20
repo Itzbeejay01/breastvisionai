@@ -101,7 +101,7 @@ class PredictView(APIView):
             pso_weights=result["pso_weights"],
             fusion_weights=result["fusion_weights"],
             ensemble_method=result["ensemble_method"],
-            heatmap_base64=result["heatmap_base64"],
+            heatmap_base64=result.get("heatmap_base64") or "",
             image_type=result["image_type"],
         )
 
@@ -163,7 +163,7 @@ class BatchPredictView(APIView):
                 pso_weights=r["pso_weights"],
                 fusion_weights=r["fusion_weights"],
                 ensemble_method=r["ensemble_method"],
-                heatmap_base64=r["heatmap_base64"],
+                heatmap_base64=r.get("heatmap_base64") or "",
                 image_type=r["image_type"],
             )
             predictions.append(p)

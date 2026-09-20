@@ -93,10 +93,15 @@ WSGI_APPLICATION = 'breastvisionai.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
+# Docker sets DJANGO_DATA_DIR to /app/data so SQLite and uploaded media can be
+# persisted in named volumes without mounting over the application code.
+DATA_DIR = Path(os.getenv('DJANGO_DATA_DIR', str(BASE_DIR)))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': DATA_DIR / 'db.sqlite3',
     }
 }
 
@@ -166,7 +171,7 @@ if os.getenv('RENDER_EXTERNAL_URL'):
 
 # Media files (uploaded images, reports)
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = Path(os.getenv('DJANGO_MEDIA_ROOT', str(BASE_DIR / 'media')))
 
 # Django REST Framework
 REST_FRAMEWORK = {
