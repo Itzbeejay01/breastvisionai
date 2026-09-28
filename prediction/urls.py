@@ -12,6 +12,7 @@ from prediction.views import (
     EnsembleConfigView,
     HistoryListView,
     HistoryDetailView,
+    ExplainPredictionView,
     UploadView,
     ReportView,
 )
@@ -23,6 +24,7 @@ urlpatterns = [
     path("ensemble/", EnsembleConfigView.as_view(), name="ensemble"),
     path("history/", HistoryListView.as_view(), name="history"),
     path("history/<int:id>/", HistoryDetailView.as_view(), name="history-detail"),
+    path("history/<int:id>/explain/", ExplainPredictionView.as_view(), name="history-explain"),
     path("upload/", UploadView.as_view(), name="upload"),
     path("report/<int:id>/", ReportView.as_view(), name="report"),
 ]
