@@ -109,7 +109,11 @@ def evaluate_image(image_path, registry):
             target_class=target_class,
         )
         heatmap = artifacts["heatmap"]
-        heatmaps[model_name] = heatmap
+        heatmaps[model_name] = tf.image.resize(
+            np.expand_dims(heatmap, axis=-1),
+            original.shape[:2],
+            method="bilinear",
+        ).numpy().squeeze()
 
         model = models[model_name]
         baseline_score = target_score(model, batch, target_class)
