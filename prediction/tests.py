@@ -119,3 +119,59 @@ class PredictionAPITest(TestCase):
         data = response.json()
         self.assertIn("prediction", data)
         self.assertIn("confidence", data)
+
+
+
+class ExplainabilityUnitTest(TestCase):
+    def test_model_agreement_summary(self):
+        from prediction.services.explainability import calculate_model_agreement
+
+        agreement = calculate_model_agreement(
+            {
+                "EfficientNet": 0.91,
+                "ResNet": 0.82,
+                "VGG16": 0.73,
+            },
+            "malignant",
+        )
+
+        self.assertEqual(agreement["support_count"], 3)
+        self.assertEqual(agreement["total_models"], 3)
+        self.assertTrue(agreement["unanimous"])
+        self.assertAlmostEqual(agreement["probability_spread"], 0.18)
+
+    def test_explanation_endpoint_returns_cached_payload(self):
+        from django.test import Client
+        from prediction.models import Prediction
+
+        prediction = Prediction.objects.create(
+            prediction_result="benign",
+            confidence=0.8,
+            fused_probability=0.2,
+            prediction_probability=0.2,
+            model_breakdown={
+                "EfficientNet": {"probability": 0.2, "weight": 1 / 3},
+                "ResNet": {"probability": 0.3, "weight": 1 / 3},
+                "VGG16": {"probability": 0.1, "weight": 1 / 3},
+            },
+            pso_weights={},
+            fusion_weights={
+                "EfficientNet": 1 / 3,
+                "ResNet": 1 / 3,
+                "VGG16": 1 / 3,
+            },
+            ensemble_method="decision_level_late_fusion",
+            explanation_data={
+                "version": "xai-v1",
+                "target_class": "benign",
+            },
+        )
+
+        client = Client()
+        client.force_login(self.user)
+        response = client.post(f"/api/history/{prediction.id}/explain/", {})
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["cached"])
+        self.assertEqual(data["explanation_data"]["version"], "xai-v1")
