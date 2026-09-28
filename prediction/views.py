@@ -376,11 +376,15 @@ class ExplainPredictionView(APIView):
 
         force = str(request.data.get("force", "")).lower() in {"1", "true", "yes"}
         if prediction.explanation_data and not force:
+            serialized = PredictionSerializer(
+                prediction,
+                context={"request": request},
+            ).data
             return Response(
                 {
                     "id": prediction.id,
                     "cached": True,
-                    "explanation_data": prediction.explanation_data,
+                    "explanation_data": serialized["explanation_data"],
                 }
             )
 
@@ -398,11 +402,15 @@ class ExplainPredictionView(APIView):
         prediction.explanation_data = explanation_data
         prediction.save(update_fields=["explanation_data"])
 
+        serialized = PredictionSerializer(
+            prediction,
+            context={"request": request},
+        ).data
         return Response(
             {
                 "id": prediction.id,
                 "cached": False,
-                "explanation_data": explanation_data,
+                "explanation_data": serialized["explanation_data"],
             },
             status=status.HTTP_200_OK,
         )
