@@ -25,6 +25,34 @@ class UploadedImageSerializer(serializers.ModelSerializer):
 
 class PredictionSerializer(serializers.ModelSerializer):
     uploaded_image = UploadedImageSerializer(read_only=True)
+    explanation_data = serializers.SerializerMethodField()
+
+    def get_explanation_data(self, obj):
+        data = obj.explanation_data or {}
+        if not data:
+            return {}
+
+        # Keep relative media paths in the database, but expose absolute URLs
+        # when a request context is available (important for split frontend/API
+        # deployments).
+        import copy
+        result = copy.deepcopy(data)
+        request = self.context.get("request")
+        if not request:
+            return result
+
+        visual = result.get("visual_evidence", {})
+        for item in visual.get("models", {}).values():
+            url = item.get("image_url")
+            if url and url.startswith("/"):
+                item["image_url"] = request.build_absolute_uri(url)
+
+        consensus = visual.get("consensus", {})
+        url = consensus.get("image_url")
+        if url and url.startswith("/"):
+            consensus["image_url"] = request.build_absolute_uri(url)
+
+        return result
 
     class Meta:
         model = Prediction
