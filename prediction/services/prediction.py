@@ -97,7 +97,11 @@ def predict_single(image_source, image_type="raw", generate_heatmap=True):
 
     # --- Step 7: PSO weights ---
     pso_weights = registry.get_pso_weights()
-    selected_pso_weights = {m: pso_weights.get(m, fusion_weights[m]) for m in selected_models}
+    selected_pso_weights = {
+        m: pso_weights[m]
+        for m in selected_models
+        if m in pso_weights
+    }
 
     # --- Step 8: Optional Grad-CAM heatmap (using first model) ---
     # Grad-CAM is useful for explainability but significantly slower on CPU.
@@ -110,6 +114,7 @@ def predict_single(image_source, image_type="raw", generate_heatmap=True):
                 primary_batch,
                 original_array,
                 primary_model,
+                target_class=prediction,
             )
         except Exception:
             # A prediction remains useful when Grad-CAM is unavailable for a
@@ -146,7 +151,9 @@ def predict_batch(image_sources, image_type="raw"):
     """
     results = []
     for i, src in enumerate(image_sources):
-        result = predict_single(src, image_type=image_type)
+        # Full XAI is generated on demand for an individual saved result.
+        # Batch inference stays fast and does not render Grad-CAM per image.
+        result = predict_single(src, image_type=image_type, generate_heatmap=False)
         result["index"] = i + 1
         results.append(result)
 
