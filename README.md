@@ -121,6 +121,44 @@ The image contains five Keras models: EfficientNet, DenseNet, ResNet, VGG16, and
 
 The meta-learner is serialized with scikit-learn 1.6.1, so that version is pinned in `requirements.txt`. Changing it may make the `.joblib` artifact unreadable.
 
+
+## Explainable AI workflow
+
+Predictions remain unchanged: PSO selects EfficientNet, ResNet, and VGG16; their
+malignancy probabilities are combined by equal-weight decision-level late fusion;
+a persisted GradientBoostingClassifier produces the final probability.
+
+Full explainability is generated on demand for a saved prediction:
+
+```text
+POST /api/history/<prediction_id>/explain/
+```
+
+The cached XAI package includes:
+
+- class-targeted Grad-CAM for EfficientNet, ResNet, and VGG16;
+- a fusion-weighted ensemble consensus Grad-CAM;
+- base-model agreement and probability spread;
+- TreeSHAP contributions for the Gradient Boosting inputs
+  `[EfficientNet, ResNet, VGG16, Late Fusion]`.
+
+Explanation PNG files are stored under `MEDIA_ROOT/explanations/`, while the
+database stores structured explanation metadata in `Prediction.explanation_data`.
+The UI exposes this under **Why this result?** and generated PDF reports include
+the cached XAI evidence.
+
+To run the quantitative XAI evaluation without retraining models:
+
+```bash
+python model_training/evaluate_xai.py \
+  --dataset datasets_split/test \
+  --limit 20 \
+  --output XAI_Evaluation
+```
+
+The evaluation reports deletion faithfulness, brightness-perturbation stability,
+and pairwise Grad-CAM correlation across the selected CNNs.
+
 ## Data and security
 
 - SQLite and uploads are persisted in the named Docker volumes shown above.
