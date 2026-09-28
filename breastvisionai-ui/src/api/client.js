@@ -108,6 +108,16 @@ export const apiHelpers = {
     return res.data;
   },
 
+  explainPrediction: async (id, force = false) => {
+    const res = await requestWithRetry({
+      url: `/history/${id}/explain/`,
+      method: "post",
+      data: { force },
+      timeout: 180000,
+    });
+    return res.data;
+  },
+
   uploadImage: async (file, imageType = "raw") => {
     const form = new FormData();
     form.append("image", file);
