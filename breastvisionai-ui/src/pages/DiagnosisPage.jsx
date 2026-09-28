@@ -3,13 +3,14 @@ import { useLocation, useParams } from "react-router-dom";
 import ImageUploader from "../components/ImageUploader";
 import ModelSelector from "../components/ModelSelector";
 import ReportGenerator from "../components/ReportGenerator";
+import ExplanationPanel from "../components/ExplanationPanel";
 import { verdictLabel } from "../utils/verdict";
 import useStore from "../store/index";
 
 export default function DiagnosisPage() {
   const { id } = useParams();
   const location = useLocation();
-  const { currentResult, predict, fetchHistoryDetail } = useStore();
+  const { currentResult, predict, fetchHistoryDetail, explainPrediction } = useStore();
   const [selected, setSelected] = useState(
     location.state?.selectedImage || null
   );
@@ -17,6 +18,8 @@ export default function DiagnosisPage() {
   const [error, setError] = useState(null);
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [scanning, setScanning] = useState(false);
+  const [xaiLoading, setXaiLoading] = useState(false);
+  const [xaiError, setXaiError] = useState(null);
 
   useEffect(() => {
     if (!id) return;
@@ -61,6 +64,24 @@ export default function DiagnosisPage() {
     setSelected(null);
     useStore.setState({ currentResult: null });
     setShowHeatmap(true);
+    setXaiError(null);
+  };
+
+  const generateExplanation = async () => {
+    if (!currentResult?.id) return;
+    setXaiLoading(true);
+    setXaiError(null);
+    try {
+      await explainPrediction(currentResult.id);
+    } catch (e) {
+      setXaiError(
+        e?.response?.data?.detail ||
+          e?.message ||
+          "Full explanation generation failed"
+      );
+    } finally {
+      setXaiLoading(false);
+    }
   };
 
   const result = currentResult;
@@ -365,6 +386,17 @@ export default function DiagnosisPage() {
           </div>
         )}
       </section>
+
+      {result && (
+        <section className="lg:col-span-12">
+          <ExplanationPanel
+            result={result}
+            onGenerate={generateExplanation}
+            loading={xaiLoading}
+            error={xaiError}
+          />
+        </section>
+      )}
     </main>
   );
 }
