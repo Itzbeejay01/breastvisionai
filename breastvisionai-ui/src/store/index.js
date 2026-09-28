@@ -91,6 +91,23 @@ const useStore = create((set, _get) => ({
     }
   },
 
+  explainPrediction: async (id, force = false) => {
+    set({ status: "loading", error: null });
+    try {
+      const response = await apiHelpers.explainPrediction(id, force);
+      set((state) => ({
+        currentResult: state.currentResult
+          ? { ...state.currentResult, explanation_data: response.explanation_data }
+          : state.currentResult,
+        status: "idle",
+      }));
+      return response.explanation_data;
+    } catch (e) {
+      set({ status: "error", error: e.message || "Explanation generation failed" });
+      throw e;
+    }
+  },
+
   predictBatch: async (files, imageType = IMAGE_TYPES.RAW) => {
     set({ status: "loading", error: null });
     try {
