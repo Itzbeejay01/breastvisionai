@@ -14,14 +14,14 @@ export default function ModelSelector({ modelBreakdown, psoWeights, fusionWeight
       <div className="space-y-2">
         {entries.map(([name, info]) => {
           const prob = info.probability ?? 0;
-          const weight = info.weight ?? psoWeights?.[name] ?? fusionWeights?.[name] ?? 0;
+          const weight = info.weight ?? fusionWeights?.[name] ?? psoWeights?.[name] ?? 0;
           const barWidth = (prob / maxProb) * 100;
           return (
             <div key={name}>
               <div className="flex justify-between text-xs text-gray-700">
                 <span>{name}</span>
                 <span>
-                  prob {prob.toFixed(3)} · weight {weight.toFixed(3)}
+                  malignancy prob {prob.toFixed(3)} · fusion weight {weight.toFixed(3)}
                 </span>
               </div>
               <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
@@ -34,14 +34,11 @@ export default function ModelSelector({ modelBreakdown, psoWeights, fusionWeight
           );
         })}
       </div>
-      {psoWeights && (
-        <div className="pt-2 text-xs text-gray-500">
-          PSO weights:{" "}
-          {Object.entries(psoWeights)
-            .map(([k, v]) => `${k}: ${v.toFixed(3)}`)
-            .join(", ")}
-        </div>
-      )}
+      <div className="pt-2 text-xs text-gray-500">
+        PSO selected these base models. The live ensemble uses equal-weight
+        decision-level fusion; these displayed weights are fusion weights, not
+        PSO-optimized model weights.
+      </div>
     </div>
   );
 }
