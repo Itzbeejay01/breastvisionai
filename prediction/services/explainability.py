@@ -234,11 +234,19 @@ def build_visual_explanation(prediction):
             "target_class": prediction.prediction_result,
         }
 
-    consensus = np.zeros_like(next(iter(heatmaps.values())), dtype=np.float32)
+    # CNN backbones can expose Grad-CAM maps at different resolutions.
+    # Resize every normalized map to the common displayed image resolution
+    # before combining them into an ensemble consensus.
+    consensus = np.zeros(original_image.shape[:2], dtype=np.float32)
     total_weight = 0.0
     for model_name in selected_models:
         weight = float(fusion_weights.get(model_name, 0.0))
-        consensus += heatmaps[model_name].astype(np.float32) * weight
+        resized_heatmap = tf.image.resize(
+            np.expand_dims(heatmaps[model_name], axis=-1),
+            original_image.shape[:2],
+            method="bilinear",
+        ).numpy().squeeze()
+        consensus += resized_heatmap.astype(np.float32) * weight
         total_weight += weight
 
     if total_weight > 0:
