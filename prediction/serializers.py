@@ -40,6 +40,7 @@ class PredictionSerializer(serializers.ModelSerializer):
             "fusion_weights",
             "ensemble_method",
             "heatmap_base64",
+            "explanation_data",
             "image_type",
             "timestamp",
         ]
