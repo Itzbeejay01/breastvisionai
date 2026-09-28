@@ -31,6 +31,7 @@ from prediction.serializers import (
 )
 from prediction.services.prediction import predict_single, predict_batch
 from prediction.services.model_registry import PSOModelRegistry, MODEL_NAMES_ALL
+from prediction.services.explainability import build_explanation_for_prediction
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -297,7 +298,7 @@ class EnsembleConfigView(APIView):
                         pass
 
         response = {
-            "method": "PSO-Weighted Late Fusion + GradientBoosting",
+            "method": "PSO-Selected Equal-Weight Late Fusion + GradientBoosting",
             "fusion_strategy": fusion_config.get("fusion_strategy", "decision_level_late_fusion"),
             "fusion_method": fusion_config.get("fusion_method", "equal_weight_probability_average"),
             "selected_models": selection["selected_models"],
@@ -354,6 +355,57 @@ class HistoryDetailView(APIView):
 
         serializer = PredictionSerializer(prediction, context={"request": request})
         return Response(serializer.data)
+
+
+class ExplainPredictionView(APIView):
+    """
+    POST /api/history/{id}/explain/
+
+    Generate and cache the full XAI package for one saved prediction:
+    three class-targeted Grad-CAM maps, an ensemble consensus map,
+    model-agreement metrics, and TreeSHAP for the Gradient Boosting layer.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, id):
+        try:
+            prediction = Prediction.objects.select_related("uploaded_image").get(id=id)
+        except Prediction.DoesNotExist:
+            raise Http404
+
+        force = str(request.data.get("force", "")).lower() in {"1", "true", "yes"}
+        if prediction.explanation_data and not force:
+            return Response(
+                {
+                    "id": prediction.id,
+                    "cached": True,
+                    "explanation_data": prediction.explanation_data,
+                }
+            )
+
+        try:
+            explanation_data = build_explanation_for_prediction(prediction)
+        except Exception as exc:
+            return Response(
+                {
+                    "error": "Could not generate full explanation",
+                    "detail": str(exc),
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        prediction.explanation_data = explanation_data
+        prediction.save(update_fields=["explanation_data"])
+
+        return Response(
+            {
+                "id": prediction.id,
+                "cached": False,
+                "explanation_data": explanation_data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class UploadView(APIView):
