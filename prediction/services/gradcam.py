@@ -9,7 +9,7 @@ task and can return both the normalized heatmap and the rendered overlay.
 import base64
 import io
 
-import matplotlib.cm as cm
+import matplotlib
 import numpy as np
 import tensorflow as tf
 
@@ -126,7 +126,7 @@ def overlay_heatmap_on_image(original_image, heatmap):
         method="bilinear",
     ).numpy().squeeze()
 
-    jet = cm.get_cmap("jet")
+    jet = matplotlib.colormaps["jet"]
     colored = jet(heatmap_resized)[:, :, :3] * 255.0
 
     original_float = original_image.astype(np.float32)

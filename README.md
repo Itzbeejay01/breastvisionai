@@ -105,15 +105,21 @@ Restart an existing container without rebuilding:
 docker restart breastvisionai
 ```
 
-After changing source code or model files, rebuild and replace the container:
+After changing only React/frontend files, update the running container without
+rebuilding the image or installing/upgrading any dependency:
 
 ```bash
-docker build -t breastvisionai .
-docker stop breastvisionai
-docker rm breastvisionai
+./scripts/update_frontend.sh
 ```
 
-Then run the start command again. The named volumes preserve the SQLite database and uploaded media across container replacement.
+This command uses the already-installed local Node packages, builds the UI, and
+copies only `breastvisionai-ui/dist` into the existing container. It does not run
+`pip`, `npm install`, migrations, model validation, or replace the database,
+uploads, volumes, image, or container.
+
+Rebuild and replace the image only after changing Python dependencies, system
+packages, model files, or other image-level runtime requirements. Named volumes
+preserve the SQLite database and uploaded media when replacement is necessary.
 
 ## Model behavior
 

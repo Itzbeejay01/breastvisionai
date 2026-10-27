@@ -12,7 +12,8 @@ breastvisionai-ui/dist
 Archive.zip
 datasets
 datasets_split
-pso_cache
+pso_cache/*
+!pso_cache/val_probs.npy
 results
 model_training/checkpoints
 *.log
