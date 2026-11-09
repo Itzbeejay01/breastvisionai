@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import ImageUploader from "../components/ImageUploader";
-import ModelSelector from "../components/ModelSelector";
 import ReportGenerator from "../components/ReportGenerator";
 import ExplanationPanel from "../components/ExplanationPanel";
 import { verdictLabel } from "../utils/verdict";
@@ -11,49 +10,72 @@ export default function DiagnosisPage() {
   const { id } = useParams();
   const location = useLocation();
   const { currentResult, predict, fetchHistoryDetail, explainPrediction } = useStore();
+  const result = currentResult;
   const [selected, setSelected] = useState(
     location.state?.selectedImage || null
   );
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [showHeatmap, setShowHeatmap] = useState(true);
+  const [errorEntry, setErrorEntry] = useState(null);
+  const error = errorEntry && errorEntry.key === location.key ? errorEntry.message : null;
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [expandedKey, setExpandedKey] = useState(null);
+  const explanationKey = [location.key, result?.id ?? "none"].join(":");
+  const explanationExpanded = expandedKey === explanationKey;
   const [scanning, setScanning] = useState(false);
-  const [xaiLoading, setXaiLoading] = useState(false);
-  const [xaiError, setXaiError] = useState(null);
+  const [xaiLoadingKey, setXaiLoadingKey] = useState(null);
+  const xaiLoading = xaiLoadingKey === explanationKey;
+  const [xaiErrorEntry, setXaiErrorEntry] = useState(null);
+  const xaiError = xaiErrorEntry?.key === explanationKey ? xaiErrorEntry.message : null;
+  const explanationRequest = useRef(0);
 
   useEffect(() => {
+    const requestToken = ++explanationRequest.current;
+    useStore.setState({ currentResult: null });
     if (!id) return;
     let cancelled = false;
     (async () => {
       try {
         const detail = await fetchHistoryDetail(id);
-        if (!cancelled) {
+        if (!cancelled && requestToken === explanationRequest.current) {
           setSelected(null);
           useStore.setState({ currentResult: detail });
         }
-      } catch (e) {
-        if (!cancelled) setError("Failed to load history result");
+      } catch {
+        if (!cancelled && requestToken === explanationRequest.current) {
+          setErrorEntry({ key: location.key, message: "Failed to load history result" });
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [id, fetchHistoryDetail]);
+  }, [id, fetchHistoryDetail, location.key]);
 
   const handleSelect = (item) => {
+    explanationRequest.current += 1;
     setSelected(item);
+    setExpandedKey(null);
+    setXaiLoadingKey(null);
+    setXaiErrorEntry(null);
+    setErrorEntry(null);
+    setShowHeatmap(false);
     useStore.setState({ currentResult: null });
   };
 
   const runPrediction = async () => {
     if (!selected) return;
+    explanationRequest.current += 1;
     setLoading(true);
-    setError(null);
+    setErrorEntry(null);
+    setExpandedKey(null);
+    setXaiLoadingKey(null);
+    setXaiErrorEntry(null);
+    setShowHeatmap(false);
     setScanning(true);
     try {
       await predict(selected.file, selected.imageType);
     } catch (e) {
-      setError(e.message || "Prediction failed");
+      setErrorEntry({ key: location.key, message: e.message || "Prediction failed" });
     } finally {
       setLoading(false);
       setScanning(false);
@@ -61,33 +83,45 @@ export default function DiagnosisPage() {
   };
 
   const resetAnalysis = () => {
+    explanationRequest.current += 1;
     setSelected(null);
     useStore.setState({ currentResult: null });
-    setShowHeatmap(true);
-    setXaiError(null);
+    setShowHeatmap(false);
+    setXaiErrorEntry(null);
+    setErrorEntry(null);
+    setExpandedKey(null);
   };
 
   const generateExplanation = async () => {
     if (!currentResult?.id) return;
-    setXaiLoading(true);
-    setXaiError(null);
+    if (currentResult.explanation_data && Object.keys(currentResult.explanation_data).length) {
+      setExpandedKey(explanationKey);
+      return;
+    }
+    const requestToken = ++explanationRequest.current;
+    const resultId = currentResult.id;
+    const activeKey = [location.key, resultId].join(":");
+    setXaiLoadingKey(activeKey);
+    setXaiErrorEntry(null);
     try {
-      await explainPrediction(currentResult.id);
+      await explainPrediction(resultId);
+      if (requestToken === explanationRequest.current && String(useStore.getState().currentResult?.id) === String(resultId)) {
+        setExpandedKey(activeKey);
+      }
     } catch (e) {
-      setXaiError(
-        e?.response?.data?.detail ||
-          e?.message ||
-          "Full explanation generation failed"
-      );
+      if (requestToken === explanationRequest.current) setXaiErrorEntry({
+        key: activeKey,
+        message: e?.response?.data?.detail || e?.message || "Could not generate the explanation. Please try again.",
+      });
     } finally {
-      setXaiLoading(false);
+      if (requestToken === explanationRequest.current) setXaiLoadingKey(null);
     }
   };
 
-  const result = currentResult;
   const verdict = result?.prediction_result || result?.prediction;
   const isMalignant = verdict === "malignant";
   const confidence = result?.confidence ?? 0;
+  const malignancyProbability = result?.prediction_probability ?? (isMalignant ? confidence : 1 - confidence);
   const imageSrc = selected?.preview || result?.uploaded_image?.preview_url;
   const isSavedAnalysis = Boolean(id);
 
@@ -178,6 +212,7 @@ export default function DiagnosisPage() {
                 <img
                   src={imageSrc}
                   alt="Ultrasound Scan"
+                  crossOrigin="use-credentials"
                   className="object-cover w-full h-full opacity-90 transition-opacity duration-500"
                 />
               ) : (
@@ -185,7 +220,7 @@ export default function DiagnosisPage() {
                   No image available
                 </div>
               )}
-              {result?.heatmap_base64 && showHeatmap && (
+              {result?.heatmap_base64 && showHeatmap && explanationExpanded && (
                 <img
                   src={result.heatmap_base64}
                   alt="Grad-CAM heatmap overlay"
@@ -209,7 +244,7 @@ export default function DiagnosisPage() {
               </div>
 
               {/* Heatmap Toggle Overlay */}
-              {result?.heatmap_base64 && (
+              {result?.heatmap_base64 && explanationExpanded && (
                 <div className="absolute bottom-4 right-4 glass-panel p-2 rounded-lg flex items-center gap-3 shadow-lg">
                   <span className="font-label-caps text-label-caps text-on-surface">
                     GRAD-CAM Overlay
@@ -284,7 +319,7 @@ export default function DiagnosisPage() {
               />
               <div className="flex justify-between items-start mb-6 mt-2">
                 <h2 className="font-headline-sm text-headline-sm text-on-surface">
-                  AI Diagnostic Verdict
+                  AI Model Prediction
                 </h2>
                 <div
                   className={`px-4 py-1 rounded-full flex items-center gap-2 border ${
@@ -303,11 +338,11 @@ export default function DiagnosisPage() {
               </div>
               <div className="flex items-baseline gap-2 mb-4">
                 <span className="font-headline-lg text-headline-lg text-on-surface">
-                  {(confidence * 100).toFixed(1)}
+                  {(malignancyProbability * 100).toFixed(1)}
                   <span className="text-headline-sm">%</span>
                 </span>
                 <span className="font-body-sm text-body-sm text-on-surface-variant uppercase tracking-wide">
-                  Confidence
+                  AI-estimated probability of malignancy
                 </span>
               </div>
               {/* Confidence Bar */}
@@ -316,23 +351,27 @@ export default function DiagnosisPage() {
                   className={`h-full rounded-full relative ${
                     isMalignant ? "bg-error" : "bg-secondary"
                   }`}
-                  style={{ width: `${confidence * 100}%` }}
+                  style={{ width: `${malignancyProbability * 100}%` }}
                 >
                   <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-r from-transparent to-white/30" />
                 </div>
               </div>
               <div className="flex justify-between font-label-caps text-label-caps text-on-surface-variant mb-6">
                 <span>Low</span>
-                <span>{isMalignant ? "High Risk" : "Low Risk"}</span>
+                <span>Model prediction: {verdictLabel(verdict)}</span>
               </div>
               <p className="font-body-sm text-body-sm text-on-surface-variant mb-6 leading-relaxed">
-                The ensemble model indicates a{" "}
-                <strong>{verdict === "malignant" ? "high" : "low"}</strong>{" "}
-                probability of malignancy based on fused predictions from{" "}
-                {result.selected_models?.length || 3} PSO-selected models, with
-                a fused probability of{" "}
-                {((result.fused_probability ?? 0) * 100).toFixed(1)}%.
+                The model estimates a {(malignancyProbability * 100).toFixed(1)}% probability of malignancy. This is an AI model prediction, not a confirmed diagnosis.
               </p>
+              <p className="font-body-sm text-body-sm text-on-surface-variant -mt-2 mb-5">Model confidence for the displayed class: {(confidence * 100).toFixed(1)}%.</p>
+              <section className="bg-surface-container-low rounded-xl p-5 mb-5">
+                <h3 className="font-headline-sm text-headline-sm text-on-surface">How Does the AI Reach This Result?</h3>
+                <p className="font-body-sm text-body-sm text-on-surface-variant mt-2 leading-relaxed">Three image-recognition models independently estimate malignancy likelihood from patterns learned during training. Their estimates are combined using equal-weight probability fusion. Gradient Boosting then reviews the inputs used by its trained configuration ({(result.meta_feature_schema || []).join(", ") || "model probabilities"}) and produces the final model prediction.</p>
+                <div className="mt-4 flex flex-col sm:flex-row gap-2 items-center justify-between text-center text-xs font-semibold text-on-surface-variant">
+                  {["Ultrasound", "Three CNN models", "Probability fusion", "Gradient Boosting", "Final result"].map((step, index) => <div key={step} className="flex items-center gap-2"><div className="rounded-lg bg-surface-container-lowest px-3 py-3">{step}</div>{index < 4 && <span className="hidden sm:block text-primary">→</span>}</div>)}
+                </div>
+                <p className="mt-4 text-xs leading-relaxed text-on-surface-variant">This AI-generated result is intended for research and decision-support purposes. It is not a substitute for clinical assessment, radiological interpretation or pathological confirmation.</p>
+              </section>
               {/* Actions */}
               <div className="grid grid-cols-2 gap-3">
                 {result.id && (
@@ -363,17 +402,6 @@ export default function DiagnosisPage() {
               </div>
             </div>
 
-            {/* Model Breakdown Card */}
-            <div className="bg-surface-container-lowest rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.05)] border border-surface-variant p-6 spring-hover">
-              <h3 className="font-headline-sm text-headline-sm text-on-surface mb-6">
-                Ensemble Model Breakdown
-              </h3>
-              <ModelSelector
-                modelBreakdown={result.model_breakdown}
-                psoWeights={result.pso_weights}
-                fusionWeights={result.fusion_weights}
-              />
-            </div>
           </>
         ) : (
           <div className="bg-surface-container-lowest rounded-xl shadow-card border border-surface-container-high p-6 flex flex-col items-center justify-center text-center gap-3 flex-grow">
@@ -389,12 +417,27 @@ export default function DiagnosisPage() {
 
       {result && (
         <section className="lg:col-span-12">
-          <ExplanationPanel
-            result={result}
-            onGenerate={generateExplanation}
-            loading={xaiLoading}
-            error={xaiError}
-          />
+          {explanationExpanded ? (
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <button type="button" onClick={() => setExpandedKey(null)} className="text-primary hover:bg-primary/5 px-4 py-2 rounded-lg font-body-md">Hide Explanation</button>
+              </div>
+              <ExplanationPanel result={result} />
+            </div>
+          ) : (
+            <div className="bg-surface-container-lowest rounded-xl border border-surface-variant shadow-sm p-6 md:p-8 flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+              <div>
+                <p className="font-label-caps text-label-caps text-primary mb-2">OPTIONAL DETAIL</p>
+                <h2 className="font-headline-md text-headline-md text-on-surface">Want to see the image evidence and decision factors?</h2>
+                <p className="font-body-sm text-body-sm text-on-surface-variant mt-2">Detailed image maps, model agreement and feature attributions are created only when you ask.</p>
+                {xaiError && <p role="alert" className="text-error font-body-sm mt-3">{xaiError} You can retry below.</p>}
+              </div>
+              <button type="button" onClick={generateExplanation} disabled={xaiLoading || !result.id} className="bg-primary text-on-primary px-6 py-3 rounded-full font-body-md shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 min-w-[240px]">
+                <span aria-hidden="true" className={xaiLoading ? "material-symbols-outlined animate-spin" : "material-symbols-outlined"}>{xaiLoading ? "progress_activity" : "psychology"}</span>
+                {xaiLoading ? "Generating explanation..." : "Explain This Result"}
+              </button>
+            </div>
+          )}
         </section>
       )}
     </main>

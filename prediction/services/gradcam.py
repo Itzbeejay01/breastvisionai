@@ -14,9 +14,10 @@ import numpy as np
 import tensorflow as tf
 
 from prediction.services.model_registry import PSOModelRegistry
+from prediction.services.class_labels import CLASS_LABELS, MALIGNANT_LABEL, MALIGNANT_INDEX
 
 IMAGE_SIZE = (224, 224)
-VALID_TARGETS = {"benign", "malignant"}
+VALID_TARGETS = set(CLASS_LABELS.values())
 
 
 def find_cnn_base_model(model):
@@ -91,14 +92,16 @@ def make_gradcam_heatmap(image, grad_model, target_class="malignant"):
             conv_outputs, predictions = grad_model(image, training=False)
 
         if predictions.shape[-1] == 1:
+            # CNN sigmoid outputs are the class-index-1 probability; the
+            # shared training mapping identifies that class as malignant.
             malignant_score = predictions[:, 0]
             class_channel = (
                 malignant_score
-                if target_class == "malignant"
+                if target_class == MALIGNANT_LABEL
                 else 1.0 - malignant_score
             )
         else:
-            target_index = 1 if target_class == "malignant" else 0
+            target_index = MALIGNANT_INDEX if target_class == MALIGNANT_LABEL else 0
             class_channel = predictions[:, target_index]
 
     gradients = tape.gradient(class_channel, conv_outputs)

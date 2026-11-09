@@ -1,0 +1,51 @@
+{
+  "selection_policy": "No test-set tuning or selection; both artifacts are reported side-by-side.",
+  "label_mapping": {
+    "documented_by_training_sources": {
+      "0": "benign",
+      "1": "malignant"
+    },
+    "semantic_verification": "not independently verified: datasets_split/ is absent"
+  },
+  "feature_schemas": {
+    "baseline": [
+      "EfficientNet",
+      "ResNet",
+      "VGG16",
+      "Late Fusion"
+    ],
+    "candidate": [
+      "EfficientNet",
+      "ResNet",
+      "VGG16"
+    ]
+  },
+  "validation": {
+    "baseline": {
+      "accuracy": 0.9952369014790674,
+      "f1": 0.9953827460510328,
+      "auc": 0.9999345788184331
+    },
+    "candidate": {
+      "accuracy": 0.9949862120832289,
+      "f1": 0.9951385512882839,
+      "auc": 0.9999007359379686
+    },
+    "interpretation": "Training split for the candidate; not an independent evaluation."
+  },
+  "test": {
+    "baseline": {
+      "accuracy": 0.9809619238476954,
+      "f1": 0.9814724524622136,
+      "auc": 0.9985756080893502
+    },
+    "candidate": {
+      "accuracy": 0.9814629258517034,
+      "f1": 0.9819688109161794,
+      "auc": 0.998503879737557
+    },
+    "interpretation": "Final held-out report only; do not use these results to tune or select."
+  },
+  "candidate_artifact": "pso_stacked_gb_three_feature_candidate.joblib",
+  "candidate_deployed": false
+}

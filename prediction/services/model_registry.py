@@ -15,6 +15,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "breastvisionai.settings")
 
 import tensorflow as tf
 from tensorflow.keras.models import load_model
+from prediction.services.class_labels import CLASS_LABELS, MALIGNANT_LABEL
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -37,7 +38,6 @@ MODEL_NAMES_ALL = [
 ]
 
 IMAGE_SIZE = (224, 224)
-
 
 class PSOModelRegistry:
     """
@@ -170,3 +170,26 @@ class PSOModelRegistry:
         if not cls._initialized:
             cls.initialize()
         return cls.selection["selected_indices"]
+
+    @classmethod
+    def get_meta_feature_names(cls):
+        """Return the exact ordered schema expected by the loaded meta learner."""
+        if not cls._initialized:
+            cls.initialize()
+        if getattr(cls.meta_learner, "feature_names_in_", None) is not None:
+            names = [str(name) for name in cls.meta_learner.feature_names_in_]
+        else:
+            feature_count = int(cls.meta_learner.n_features_in_)
+            candidates = {
+                3: list(cls.selection["selected_models"]),
+                4: [*cls.selection["selected_models"], "Late Fusion"],
+            }
+            if feature_count not in candidates:
+                raise ValueError(f"Unsupported meta-learner feature count: {feature_count}")
+            names = candidates[feature_count]
+        allowed = set(cls.selection["selected_models"]) | {"Late Fusion"}
+        if len(names) != int(cls.meta_learner.n_features_in_) or len(set(names)) != len(names):
+            raise ValueError("Meta-learner feature names do not match its input shape")
+        if any(name not in allowed for name in names):
+            raise ValueError(f"Unknown meta-learner feature name in schema: {names}")
+        return names

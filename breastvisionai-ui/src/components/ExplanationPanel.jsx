@@ -1,50 +1,10 @@
-export default function ExplanationPanel({
-  result,
-  onGenerate,
-  loading = false,
-  error = null,
-}) {
+export default function ExplanationPanel({ result }) {
   const explanation = result?.explanation_data;
   const hasExplanation =
     explanation && Object.keys(explanation).length > 0;
 
   if (!hasExplanation) {
-    return (
-      <div className="bg-surface-container-lowest rounded-xl border border-surface-variant shadow-sm p-6 md:p-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5">
-          <div className="max-w-2xl">
-            <p className="font-label-caps text-label-caps text-primary mb-2">
-              EXPLAINABLE AI
-            </p>
-            <h2 className="font-headline-md text-headline-md text-on-surface">
-              Why did the ensemble make this decision?
-            </h2>
-            <p className="font-body-sm text-body-sm text-on-surface-variant mt-3 leading-relaxed">
-              Generate class-targeted Grad-CAM evidence for all three
-              PSO-selected CNNs, an ensemble consensus map, model-agreement
-              metrics, and a TreeSHAP explanation of the Gradient Boosting
-              meta-learner.
-            </p>
-            {error && (
-              <p className="text-error font-body-sm text-body-sm mt-3">
-                {error}
-              </p>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={onGenerate}
-            disabled={loading || !result?.id}
-            className="bg-primary text-on-primary px-6 py-3 rounded-full font-body-md text-body-md shadow-sm hover:bg-primary-container hover:text-on-primary-container transition-colors disabled:opacity-50 flex items-center justify-center gap-2 min-w-[220px]"
-          >
-            <span className="material-symbols-outlined">
-              {loading ? "progress_activity" : "psychology"}
-            </span>
-            {loading ? "Generating explanation…" : "Generate Full Explanation"}
-          </button>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   const visual = explanation.visual_evidence || {};
@@ -63,7 +23,7 @@ export default function ExplanationPanel({
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div>
             <p className="font-label-caps text-label-caps text-primary mb-2">
-              EXPLAINABLE AI / XAI-V1
+              EXPLAINABLE AI / XAI-V2
             </p>
             <h2 className="font-headline-md text-headline-md text-on-surface">
               Why this result?
@@ -108,6 +68,7 @@ export default function ExplanationPanel({
             >
               <img
                 src={item.image_url}
+                crossOrigin="use-credentials"
                 alt={`${name} Grad-CAM for ${item.target_class}`}
                 className="w-full aspect-[4/3] object-cover"
               />
@@ -126,6 +87,7 @@ export default function ExplanationPanel({
             <figure className="rounded-xl overflow-hidden border-2 border-primary/30 bg-primary-container/5">
               <img
                 src={visual.consensus.image_url}
+                crossOrigin="use-credentials"
                 alt="Ensemble consensus Grad-CAM"
                 className="w-full aspect-[4/3] object-cover"
               />
@@ -158,8 +120,17 @@ export default function ExplanationPanel({
           <p className="font-body-sm text-body-sm text-on-surface-variant mt-2 mb-6">
             Positive values push the final decision toward malignancy; negative
             values push it toward benign. SHAP output space:{" "}
-            <strong>{shap.output_space || "unknown"}</strong>.
+            <strong>{shap.output_space || "unknown"}</strong>
+            {shap.output_space === "raw_decision_function"
+              ? " (raw decision-score units; checked against decision_function)"
+              : " (malignancy probability)"}.
           </p>
+          {typeof shap.additivity_valid === "boolean" && (
+            <p className="text-sm mb-5 text-on-surface-variant">
+              Additivity check {shap.additivity_valid ? "passed" : "did not meet tolerance"}; absolute error{" "}
+              {Number(shap.additivity_error ?? 0).toExponential(2)}.
+            </p>
+          )}
 
           <div className="space-y-4">
             {features.map((item) => {
@@ -215,7 +186,9 @@ export default function ExplanationPanel({
           <p className="font-body-sm text-body-sm text-on-surface-variant mt-2 mb-6">
             Probability spread:{" "}
             {((agreement.probability_spread ?? 0) * 100).toFixed(1)} percentage
-            points.
+            points. Support for the final model prediction:{" "}
+            {agreement.support_count ?? 0}/{agreement.total_models ?? 0}. This
+            is model agreement, not model accuracy or clinical certainty.
           </p>
 
           <div className="space-y-3">
