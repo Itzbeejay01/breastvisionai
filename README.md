@@ -50,12 +50,12 @@ docker run --name breastvisionai `
   -p 10000:10000 `
   -v breastvisionai-data:/app/data `
   -v breastvisionai-media:/app/media `
-  -e DJANGO_SECRET_KEY="secret-key-123@" `
+  -e DJANGO_SECRET_KEY="replace-with-a-generated-secret" `
   -e DJANGO_DEBUG="true" `
   -e ALLOWED_HOSTS="localhost,127.0.0.1" `
-  -e DJANGO_SUPERUSER_USERNAME="Olumide A.T." `
-  -e DJANGO_SUPERUSER_EMAIL="admin@breastvisionai.com" `
-  -e DJANGO_SUPERUSER_PASSWORD="Password123@" `
+  -e DJANGO_SUPERUSER_USERNAME="replace-with-admin-username" `
+  -e DJANGO_SUPERUSER_EMAIL="replace-with-admin-email" `
+  -e DJANGO_SUPERUSER_PASSWORD="replace-with-a-unique-password" `
   breastvisionai
 ```
 
@@ -66,12 +66,12 @@ docker run --name breastvisionai \
   -p 10000:10000 \
   -v breastvisionai-data:/app/data \
   -v breastvisionai-media:/app/media \
-  -e DJANGO_SECRET_KEY='secret-key-123@' \
+  -e DJANGO_SECRET_KEY='replace-with-a-generated-secret' \
   -e DJANGO_DEBUG='true' \
   -e ALLOWED_HOSTS='localhost,127.0.0.1' \
-  -e DJANGO_SUPERUSER_USERNAME='Olumide A.T.' \
-  -e DJANGO_SUPERUSER_EMAIL='admin@breastvisionai.com' \
-  -e DJANGO_SUPERUSER_PASSWORD='Password123@' \
+  -e DJANGO_SUPERUSER_USERNAME='replace-with-admin-username' \
+  -e DJANGO_SUPERUSER_EMAIL='replace-with-admin-email' \
+  -e DJANGO_SUPERUSER_PASSWORD='replace-with-a-unique-password' \
   breastvisionai
 ```
 

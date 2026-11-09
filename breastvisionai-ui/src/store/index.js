@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { apiHelpers } from "../api/client";
 
+let historyDetailRequest = 0;
+
 export const IMAGE_TYPES = {
   RAW: "raw",
   PROCESSED: "processed",
@@ -41,13 +43,14 @@ const useStore = create((set, _get) => ({
   },
 
   fetchHistoryDetail: async (id) => {
+    const requestToken = ++historyDetailRequest;
     set({ status: "loading", error: null });
     try {
       const data = await apiHelpers.getHistoryDetail(id);
-      set({ currentResult: data, status: "idle" });
+      if (requestToken === historyDetailRequest) set({ currentResult: data, status: "idle" });
       return data;
     } catch (e) {
-      set({ status: "error", error: e.message || "Failed to load result" });
+      if (requestToken === historyDetailRequest) set({ status: "error", error: e.message || "Failed to load result" });
       throw e;
     }
   },
@@ -96,7 +99,7 @@ const useStore = create((set, _get) => ({
     try {
       const response = await apiHelpers.explainPrediction(id, force);
       set((state) => ({
-        currentResult: state.currentResult
+        currentResult: state.currentResult && String(state.currentResult.id) === String(id)
           ? { ...state.currentResult, explanation_data: response.explanation_data }
           : state.currentResult,
         status: "idle",

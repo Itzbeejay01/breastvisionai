@@ -104,6 +104,7 @@ celerybeat.pid
 # Images / datasets temp
 datasets/**/*.tmp
 datasets_split
+db.sqlite3
 .commandcode/
 Archive.zip
 

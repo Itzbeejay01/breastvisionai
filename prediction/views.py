@@ -13,7 +13,8 @@ Endpoints:
 """
 
 import os
-import json
+import mimetypes
+import logging
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -23,6 +24,7 @@ from rest_framework.permissions import IsAuthenticated
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
 from django.http import FileResponse, Http404
+from django.conf import settings
 
 from prediction.models import UploadedImage, Prediction
 from prediction.serializers import (
@@ -31,15 +33,29 @@ from prediction.serializers import (
 )
 from prediction.services.prediction import predict_single, predict_batch
 from prediction.services.model_registry import PSOModelRegistry, MODEL_NAMES_ALL
-from prediction.services.explainability import build_explanation_for_prediction
+from prediction.services.explainability import (
+    EXPLANATION_VERSION,
+    build_explanation_for_prediction,
+)
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+logger = logging.getLogger(__name__)
 
 
 class StandardResultsSetPagination(pagination.PageNumberPagination):
     page_size = 20
     page_size_query_param = "limit"
     max_page_size = 100
+
+
+def owned_predictions(user):
+    queryset = Prediction.objects.select_related("uploaded_image")
+    return queryset if user.is_superuser else queryset.filter(owner=user)
+
+
+def owned_images(user):
+    queryset = UploadedImage.objects.all()
+    return queryset if user.is_superuser else queryset.filter(owner=user)
 
 
 class PredictView(APIView):
@@ -83,16 +99,18 @@ class PredictView(APIView):
 
         # Save uploaded image
         uploaded = UploadedImage.objects.create(
+            owner=request.user,
             image=image,
             filename=image.name,
             image_type=image_type,
         )
 
         # Run PSO prediction
-        result = predict_single(uploaded.image.path, image_type=image_type)
+        result = predict_single(uploaded.image.path, image_type=image_type, generate_heatmap=False)
 
         # Save prediction to database
         prediction = Prediction.objects.create(
+            owner=request.user,
             uploaded_image=uploaded,
             prediction_result=result["prediction"],
             confidence=result["confidence"],
@@ -102,6 +120,7 @@ class PredictView(APIView):
             pso_weights=result["pso_weights"],
             fusion_weights=result["fusion_weights"],
             ensemble_method=result["ensemble_method"],
+            meta_feature_schema=result["meta_feature_schema"],
             heatmap_base64=result.get("heatmap_base64") or "",
             image_type=result["image_type"],
         )
@@ -141,6 +160,7 @@ class BatchPredictView(APIView):
         saved_images = []
         for img in images:
             uploaded = UploadedImage.objects.create(
+                owner=request.user,
                 image=img,
                 filename=img.name,
                 image_type=image_type,
@@ -155,6 +175,7 @@ class BatchPredictView(APIView):
         predictions = []
         for u, r in zip(saved_images, result["results"]):
             p = Prediction.objects.create(
+                owner=request.user,
                 uploaded_image=u,
                 prediction_result=r["prediction"],
                 confidence=r["confidence"],
@@ -164,6 +185,7 @@ class BatchPredictView(APIView):
                 pso_weights=r["pso_weights"],
                 fusion_weights=r["fusion_weights"],
                 ensemble_method=r["ensemble_method"],
+                meta_feature_schema=r["meta_feature_schema"],
                 heatmap_base64=r.get("heatmap_base64") or "",
                 image_type=r["image_type"],
             )
@@ -331,9 +353,10 @@ class HistoryListView(APIView):
     """
 
     pagination_class = StandardResultsSetPagination
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        predictions = Prediction.objects.all()
+        predictions = owned_predictions(request.user)
         paginator = StandardResultsSetPagination()
         page = paginator.paginate_queryset(predictions, request)
         serializer = PredictionSerializer(page, many=True, context={"request": request})
@@ -347,9 +370,11 @@ class HistoryDetailView(APIView):
     Single prediction detail with full model breakdown.
     """
 
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, id):
         try:
-            prediction = Prediction.objects.get(id=id)
+            prediction = owned_predictions(request.user).get(id=id)
         except Prediction.DoesNotExist:
             raise Http404
 
@@ -370,31 +395,33 @@ class ExplainPredictionView(APIView):
 
     def post(self, request, id):
         try:
-            prediction = Prediction.objects.select_related("uploaded_image").get(id=id)
+            prediction = owned_predictions(request.user).get(id=id)
         except Prediction.DoesNotExist:
             raise Http404
 
         force = str(request.data.get("force", "")).lower() in {"1", "true", "yes"}
-        if prediction.explanation_data and not force:
-            serialized = PredictionSerializer(
-                prediction,
-                context={"request": request},
-            ).data
+        if (
+            prediction.explanation_data
+            and prediction.explanation_data.get("version") == EXPLANATION_VERSION
+            and not force
+        ):
+            from prediction.serializers import serialize_explanation
             return Response(
                 {
                     "id": prediction.id,
                     "cached": True,
-                    "explanation_data": serialized["explanation_data"],
+                    "explanation_data": serialize_explanation(prediction.explanation_data, request),
                 }
             )
 
         try:
             explanation_data = build_explanation_for_prediction(prediction)
-        except Exception as exc:
+        except Exception:
+            logger.exception("Explanation generation failed for prediction %s", prediction.id)
             return Response(
                 {
                     "error": "Could not generate full explanation",
-                    "detail": str(exc),
+                    "detail": "Explanation generation failed. Please retry.",
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
@@ -402,15 +429,12 @@ class ExplainPredictionView(APIView):
         prediction.explanation_data = explanation_data
         prediction.save(update_fields=["explanation_data"])
 
-        serialized = PredictionSerializer(
-            prediction,
-            context={"request": request},
-        ).data
+        from prediction.serializers import serialize_explanation
         return Response(
             {
                 "id": prediction.id,
                 "cached": False,
-                "explanation_data": serialized["explanation_data"],
+                "explanation_data": serialize_explanation(explanation_data, request),
             },
             status=status.HTTP_200_OK,
         )
@@ -449,6 +473,7 @@ class UploadView(APIView):
             )
 
         uploaded = UploadedImage.objects.create(
+            owner=request.user,
             image=image,
             filename=image.name,
             image_type=image_type,
@@ -456,6 +481,45 @@ class UploadView(APIView):
 
         serializer = UploadedImageSerializer(uploaded, context={"request": request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class UploadedImageView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, id):
+        try:
+            image = owned_images(request.user).get(id=id)
+        except UploadedImage.DoesNotExist:
+            raise Http404
+        if not image.image:
+            raise Http404
+        response = FileResponse(
+            image.image.open("rb"),
+            content_type=mimetypes.guess_type(image.image.name)[0] or "application/octet-stream",
+        )
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+
+class ExplanationImageView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, id, filename):
+        if filename not in {"efficientnet_gradcam.png", "resnet_gradcam.png", "vgg16_gradcam.png", "ensemble_consensus_gradcam.png"}:
+            raise Http404
+        try:
+            prediction = owned_predictions(request.user).get(id=id)
+        except Prediction.DoesNotExist:
+            raise Http404
+        if prediction.explanation_data.get("version") != EXPLANATION_VERSION:
+            raise Http404
+        path = os.path.join("explanations", f"prediction_{id}", filename)
+        absolute_path = os.path.join(str(settings.MEDIA_ROOT), path)
+        if not os.path.isfile(absolute_path):
+            raise Http404
+        response = FileResponse(open(absolute_path, "rb"), content_type="image/png")
+        response["Cache-Control"] = "private, no-store"
+        return response
 
 
 class ReportView(APIView):
@@ -473,18 +537,20 @@ class ReportView(APIView):
         from prediction.services.report_generator import generate_pdf_report
 
         try:
-            prediction = Prediction.objects.get(id=id)
+            prediction = owned_predictions(request.user).get(id=id)
         except Prediction.DoesNotExist:
             raise Http404
 
         pdf_path = generate_pdf_report(prediction, request)
 
         if pdf_path and os.path.exists(pdf_path):
-            return FileResponse(
+            response = FileResponse(
                 open(pdf_path, "rb"),
                 as_attachment=True,
                 filename=f"breastvisionai_report_{prediction.id}.pdf",
             )
+            response["Cache-Control"] = "private, no-store"
+            return response
 
         return Response(
             {"error": "Could not generate report"},

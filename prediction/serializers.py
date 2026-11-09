@@ -6,6 +6,24 @@ from rest_framework import serializers
 from prediction.models import UploadedImage, Prediction
 
 
+def serialize_explanation(data, request=None):
+    """Convert cached relative media paths for the explicit explain response."""
+    import copy
+    result = copy.deepcopy(data or {})
+    if not request:
+        return result
+    visual = result.get("visual_evidence", {})
+    for item in visual.get("models", {}).values():
+        url = item.get("image_url")
+        if url and url.startswith("/"):
+            item["image_url"] = request.build_absolute_uri(url)
+    consensus = visual.get("consensus", {})
+    url = consensus.get("image_url")
+    if url and url.startswith("/"):
+        consensus["image_url"] = request.build_absolute_uri(url)
+    return result
+
+
 class UploadedImageSerializer(serializers.ModelSerializer):
     preview_url = serializers.SerializerMethodField()
 
@@ -16,7 +34,7 @@ class UploadedImageSerializer(serializers.ModelSerializer):
     def get_preview_url(self, obj):
         request = self.context.get("request")
         if obj.image:
-            url = obj.image.url
+            url = f"/api/uploads/{obj.pk}/image/"
             if request:
                 return request.build_absolute_uri(url)
             return url
@@ -25,34 +43,15 @@ class UploadedImageSerializer(serializers.ModelSerializer):
 
 class PredictionSerializer(serializers.ModelSerializer):
     uploaded_image = UploadedImageSerializer(read_only=True)
+    # Detailed evidence is returned only by POST /history/{id}/explain/.
     explanation_data = serializers.SerializerMethodField()
+    heatmap_base64 = serializers.SerializerMethodField()
 
     def get_explanation_data(self, obj):
-        data = obj.explanation_data or {}
-        if not data:
-            return {}
+        return {}
 
-        # Keep relative media paths in the database, but expose absolute URLs
-        # when a request context is available (important for split frontend/API
-        # deployments).
-        import copy
-        result = copy.deepcopy(data)
-        request = self.context.get("request")
-        if not request:
-            return result
-
-        visual = result.get("visual_evidence", {})
-        for item in visual.get("models", {}).values():
-            url = item.get("image_url")
-            if url and url.startswith("/"):
-                item["image_url"] = request.build_absolute_uri(url)
-
-        consensus = visual.get("consensus", {})
-        url = consensus.get("image_url")
-        if url and url.startswith("/"):
-            consensus["image_url"] = request.build_absolute_uri(url)
-
-        return result
+    def get_heatmap_base64(self, obj):
+        return ""
 
     class Meta:
         model = Prediction
@@ -67,6 +66,7 @@ class PredictionSerializer(serializers.ModelSerializer):
             "pso_weights",
             "fusion_weights",
             "ensemble_method",
+            "meta_feature_schema",
             "heatmap_base64",
             "explanation_data",
             "image_type",

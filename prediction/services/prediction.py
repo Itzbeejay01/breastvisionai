@@ -20,10 +20,11 @@ import numpy as np
 import tensorflow as tf
 
 from prediction.services.model_registry import PSOModelRegistry
+from prediction.services.class_labels import CLASS_LABELS, MALIGNANT_LABEL, malignant_column
 from prediction.services.preprocessing import preprocess_image_for_all_models
 from prediction.services.gradcam import generate_gradcam_for_image
 
-CLASS_NAMES = ["benign", "malignant"]
+CLASS_NAMES = [CLASS_LABELS[index] for index in sorted(CLASS_LABELS)]
 logger = logging.getLogger(__name__)
 
 
@@ -35,7 +36,7 @@ def _predict_model(model, batched):
     return model.predict(batched, verbose=0)
 
 
-def predict_single(image_source, image_type="raw", generate_heatmap=True):
+def predict_single(image_source, image_type="raw", generate_heatmap=False):
     """
     Run the full PSO ensemble prediction on a single image.
 
@@ -78,9 +79,12 @@ def predict_single(image_source, image_type="raw", generate_heatmap=True):
     fused_probability = float(np.average(probs_array, weights=weights_array))
 
     # --- Step 4: GB meta-learner ---
-    # Features: [p1, p2, p3, fused_probability]
-    gb_features = np.array([[model_probs[m] for m in selected_models] + [fused_probability]])
-    gb_proba = float(meta_learner.predict_proba(gb_features)[0, 1])
+    # Match the artifact's validated trained schema exactly (baseline: 4 inputs).
+    feature_schema = registry.get_meta_feature_names()
+    feature_values = {**model_probs, "Late Fusion": fused_probability}
+    gb_features = np.asarray([[feature_values[name] for name in feature_schema]], dtype=float)
+    malignant_index = malignant_column(meta_learner)
+    gb_proba = float(meta_learner.predict_proba(gb_features)[0, malignant_index])
 
     # --- Step 5: Final prediction ---
     prediction_idx = int(gb_proba >= 0.5)
@@ -133,6 +137,7 @@ def predict_single(image_source, image_type="raw", generate_heatmap=True):
         "fusion_weights": fusion_weights,
         "ensemble_method": fusion_config.get("fusion_strategy", "decision_level_late_fusion"),
         "meta_learner": "GradientBoostingClassifier",
+        "meta_feature_schema": feature_schema,
         "heatmap_base64": heatmap_b64,
         "image_type": image_type,
     }

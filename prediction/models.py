@@ -3,9 +3,14 @@ Django models for storing uploaded images and prediction results.
 """
 
 from django.db import models
+from django.conf import settings
 
 
 class UploadedImage(models.Model):
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="breastvision_uploaded_images",
+    )
     IMAGE_TYPE_CHOICES = [
         ("raw", "Raw (needs preprocessing)"),
         ("processed", "Pre-processed"),
@@ -28,6 +33,10 @@ class UploadedImage(models.Model):
 
 
 class Prediction(models.Model):
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="breastvision_predictions",
+    )
     CLASS_BENIGN = "benign"
     CLASS_MALIGNANT = "malignant"
     PREDICTION_CHOICES = [
@@ -50,6 +59,7 @@ class Prediction(models.Model):
     pso_weights = models.JSONField()
     fusion_weights = models.JSONField(blank=True, default=dict)
     ensemble_method = models.CharField(max_length=100, blank=True)
+    meta_feature_schema = models.JSONField(blank=True, default=list)
     heatmap_base64 = models.TextField(blank=True, default="")
     explanation_data = models.JSONField(blank=True, default=dict)
     image_type = models.CharField(max_length=20, default="raw")

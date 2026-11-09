@@ -35,10 +35,16 @@ IMPORTANT:
 import os
 import json
 import joblib
+import sys
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
+
 from sklearn.ensemble import GradientBoostingClassifier
+from prediction.services.class_labels import malignant_column
 
 from sklearn.metrics import (
     accuracy_score,
@@ -367,9 +373,8 @@ y_pred = meta_learner.predict(
     X_test
 )
 
-y_prob = meta_learner.predict_proba(
-    X_test
-)[:, 1]
+malignant_probability_column = malignant_column(meta_learner)
+y_prob = meta_learner.predict_proba(X_test)[:, malignant_probability_column]
 
 
 # ============================================================

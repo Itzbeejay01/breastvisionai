@@ -1,0 +1,10 @@
+{
+  "version": "candidate-three-cnn-probabilities-v1",
+  "features": [
+    "EfficientNet",
+    "ResNet",
+    "VGG16"
+  ],
+  "training_split": "validation",
+  "deployed": false
+}

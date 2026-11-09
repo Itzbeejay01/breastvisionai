@@ -15,6 +15,8 @@ from prediction.views import (
     ExplainPredictionView,
     UploadView,
     ReportView,
+    UploadedImageView,
+    ExplanationImageView,
 )
 
 urlpatterns = [
@@ -26,5 +28,7 @@ urlpatterns = [
     path("history/<int:id>/", HistoryDetailView.as_view(), name="history-detail"),
     path("history/<int:id>/explain/", ExplainPredictionView.as_view(), name="history-explain"),
     path("upload/", UploadView.as_view(), name="upload"),
+    path("uploads/<int:id>/image/", UploadedImageView.as_view(), name="uploaded-image"),
+    path("history/<int:id>/explanation-image/<str:filename>/", ExplanationImageView.as_view(), name="explanation-image"),
     path("report/<int:id>/", ReportView.as_view(), name="report"),
 ]
